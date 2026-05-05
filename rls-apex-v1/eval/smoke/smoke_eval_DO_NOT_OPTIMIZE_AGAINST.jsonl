@@ -1,0 +1,4 @@
+{"_warning": "PLUMBING ONLY — see README in this directory. NEVER use as a quality signal. NEVER feed into GEPA."}
+{"id": "smoke-001", "q": "find prior opinions citing §163.31801", "expects_at_least_one_citation": true, "expects_lineage_id": true}
+{"id": "smoke-002", "q": "what is the BIE posting deadline", "expects_at_least_one_citation": true, "expects_lineage_id": true}
+{"id": "smoke-003", "q": "show me code enforcement opinions from 2024", "expects_at_least_one_citation": true, "expects_lineage_id": true}

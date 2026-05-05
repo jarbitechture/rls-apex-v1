@@ -1,0 +1,35 @@
+# promptfoo — SMOKE configuration.
+#
+# This config is plumbing-only (see eval/smoke/README.md). It tests that:
+#   • the gateway responds
+#   • lineage IDs are stamped
+#   • at least one citation appears in the output
+#
+# DO NOT add quality assertions here. Quality lives in
+# eval/promptfoo/quality.yaml (post-week-2) and eval/inspect-ai/.
+
+description: "Smoke — plumbing only. NEVER use these scores as a quality signal."
+
+prompts:
+  - "{{q}}"
+
+providers:
+  - id: rls-gateway
+    config:
+      url: http://127.0.0.1:8080/api/query
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"q": "{{q}}"}'
+      transformResponse: "json.answer"
+
+tests:
+  - vars: { q: "find prior opinions citing §163.31801" }
+    assert:
+      - { type: contains, value: "ln-" }       # lineage id present
+  - vars: { q: "what is the BIE posting deadline" }
+    assert:
+      - { type: contains, value: "ln-" }
+  - vars: { q: "show me code enforcement opinions from 2024" }
+    assert:
+      - { type: contains, value: "ln-" }

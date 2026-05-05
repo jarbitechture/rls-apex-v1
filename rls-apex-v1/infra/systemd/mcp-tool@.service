@@ -1,0 +1,54 @@
+# systemd template — one unit per MCP tool.
+# Enable per tool:  sudo systemctl enable --now mcp-tool@retrieve.service
+# Override per tool: /etc/systemd/system/mcp-tool@<name>.service.d/override.conf
+
+[Unit]
+Description=RLS Apex MCP tool — %i
+After=network.target
+# Each tool depends on its own backends; declare via override.conf when needed.
+# Example: After=postgresql.service in mcp-tool@docs override.
+
+[Service]
+Type=simple
+User=rls
+Group=rls
+WorkingDirectory=/opt/rls-apex-v1/mcp-tools/%i
+Environment="TOOL_NAME=%i"
+Environment="PYTHONUNBUFFERED=1"
+EnvironmentFile=/etc/rls-apex-v1/mcp-tool@%i.env
+# %i resolves to the instance name (retrieve, policy-graph, ontology, ...).
+# Each .env file sets TOOL_PORT and pulls its scoped Key Vault secret name:
+#   TOOL_PORT=30100
+#   KV_SECRET_NAME=tool-retrieve-secret
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -m rls_mcp.tools.%i
+
+# Resource budgets — tighten per tool via override.conf
+MemoryMax=1G
+CPUQuota=50%
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+ReadWritePaths=/var/log/rls-apex-v1
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+# Loopback only — gateway is the sole client.
+# Tools bind 127.0.0.1:$TOOL_PORT; firewalld does not need a rule.
+
+StandardOutput=append:/var/log/rls-apex-v1/mcp-%i.log
+StandardError=append:/var/log/rls-apex-v1/mcp-%i.err
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rls.mymanatee.org/schemas/manatee_ai_roi.schema.json",
+  "title": "manatee_ai_roi event",
+  "description": "Per Operating Rule #18. Metadata only — NEVER prompt bodies, output bodies, or document content.",
+  "type": "object",
+  "required": [
+    "ts",
+    "workflow",
+    "user_id",
+    "dept",
+    "role_band",
+    "task_type",
+    "tool",
+    "surface",
+    "prompt_tokens",
+    "output_tokens",
+    "duration_s",
+    "success",
+    "lineage_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ts":             { "type": "string", "format": "date-time" },
+    "workflow":       { "type": "string", "examples": ["precedent-retriever", "policy-matcher"] },
+    "user_id":        { "type": "string", "description": "Hashed UPN — never the raw UPN" },
+    "dept":           { "type": "string", "examples": ["County Attorney", "Code Enforcement"] },
+    "role_band":      { "type": "string", "enum": ["attorney", "paralegal", "general_counsel", "admin"] },
+    "task_type":      { "type": "string", "examples": ["query", "draft", "review"] },
+    "tool":           { "type": "string", "examples": ["retrieve", "policy-graph", "ontology"] },
+    "surface":        { "type": "string", "examples": ["chat", "wizard", "skills-templates"] },
+    "model":          { "type": "string", "examples": ["qwen2.5-7b", "qwen2.5-32b", "gpt-4o"] },
+    "prompt_tokens":  { "type": "integer", "minimum": 0 },
+    "output_tokens":  { "type": "integer", "minimum": 0 },
+    "duration_s":     { "type": "number",  "minimum": 0 },
+    "success":        { "type": "boolean" },
+    "lineage_id":     { "type": "string", "pattern": "^ln-[a-f0-9]{8,}$" },
+    "matter_kind":    { "type": "string", "description": "Matter.kind enum from domain.yaml. Optional." },
+    "classification": { "type": "string", "enum": ["public_record", "internal", "confidential", "privileged"] }
+  }
+}

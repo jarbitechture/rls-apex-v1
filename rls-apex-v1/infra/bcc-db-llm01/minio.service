@@ -1,0 +1,30 @@
+[Unit]
+Description=MinIO — RLS Apex object store
+After=network.target
+
+[Service]
+Type=simple
+User=minio
+Group=minio
+WorkingDirectory=/var/minio
+EnvironmentFile=/etc/default/minio
+# /etc/default/minio sets:
+#   MINIO_ROOT_USER=<from KV>
+#   MINIO_ROOT_PASSWORD=<from KV>
+#   MINIO_VOLUMES=/var/minio/data
+#   MINIO_OPTS="--address :9000 --console-address :9001"
+ExecStart=/usr/local/bin/minio server $MINIO_VOLUMES $MINIO_OPTS
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/minio/data
+LockPersonality=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

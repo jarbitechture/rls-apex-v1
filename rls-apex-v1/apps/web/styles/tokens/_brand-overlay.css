@@ -1,0 +1,14 @@
+/* ─────────────────────────────────────────────────────────────────
+   _brand-overlay.css
+   ─────────────────────────────────────────────────────────────────
+   Empty in v0.1.0. When the Manatee County brand kit is available:
+
+     1. Convert the kit to CSS custom properties on :root.
+     2. Drop the result here, OR replace this file with the
+        canonical `manatee-county.tokens.css`.
+     3. Only override variables — never reintroduce hex literals
+        in components.
+
+   This file is loaded AFTER `_base.css` in `index.css`, so any
+   variable redefined here wins via cascade. No JS, no build step.
+   ───────────────────────────────────────────────────────────────── */

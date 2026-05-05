@@ -1,0 +1,44 @@
+/* Prototype tokens — v0.1.0 working brand.
+   Components consume CSS variables only — never hex literals. */
+
+:root {
+  /* Color — primary (Manatee teal) */
+  --primary: oklch(58% 0.085 200);
+  --primary-ink: oklch(38% 0.085 200);
+  --accent: oklch(72% 0.13 175);
+
+  /* Color — neutrals */
+  --canvas: #ffffff;
+  --muted: oklch(97% 0.005 90);
+  --muted-2: oklch(94% 0.005 90);
+  --ink: oklch(22% 0.01 240);
+  --ink-2: oklch(38% 0.01 240);
+  --ink-3: oklch(55% 0.008 240);
+  --ink-4: oklch(70% 0.005 240);
+
+  /* Color — semantic */
+  --success: oklch(60% 0.13 145);
+  --warning: oklch(70% 0.15 70);
+  --info:    oklch(60% 0.12 245);
+  --destructive: oklch(58% 0.18 25);
+
+  /* Border + surface */
+  --border: oklch(92% 0.005 240);
+  --border-strong: oklch(85% 0.01 240);
+
+  /* Type */
+  --serif: ui-serif, "Source Serif Pro", Georgia, serif;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+
+  /* Spacing scale */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;
+  --s-4: 16px; --s-5: 20px; --s-6: 24px;
+  --s-8: 32px; --s-10: 40px;
+
+  /* Radii + shadows */
+  --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-xl: 14px;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-sm: 0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 6px 18px rgba(0,0,0,0.08);
+}

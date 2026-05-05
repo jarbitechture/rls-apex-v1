@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""
+codegen — domain.yaml → typed artifacts.
+
+Regenerates:
+  • apps/gateway/types/_generated.py    (Pydantic v2)
+  • apps/web/src/types/_generated.ts    (Zod + TS)
+  • infra/migrations/versions/_generated/  (Alembic)
+  • mcp-tools/_schemas/<tool>.json      (FastMCP JSON schemas)
+
+Run on every PR; CI fails if output diverges from committed state.
+This is a stub — the real implementation is week-1 work, but the
+contract (single source of truth, drift = build failure) is locked.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import yaml
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parent.parent
+    domain = yaml.safe_load((root / "domain.yaml").read_text())
+
+    print(f"[codegen] domain.yaml v{domain['version']}")
+    print(f"[codegen] entities: {len(domain['entities'])}")
+    print(f"[codegen] relations: {len(domain['relations'])}")
+    print(f"[codegen] tools: {len(domain['tools'])}")
+    print("[codegen] STUB — real generation lands week 1 of scaffold work.")
+    print("[codegen] Targets:")
+    for t in domain["generated_targets"]:
+        print(f"           - {t}")
+
+    # TODO: Pydantic emitter
+    # TODO: Zod emitter
+    # TODO: Alembic emitter (with hand-edited prelude — never regenerate
+    #       past the marker)
+    # TODO: FastMCP JSON schema emitter
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

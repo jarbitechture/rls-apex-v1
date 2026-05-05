@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# scratch / sketch artifacts
+scraps/
+*.napkin
+
+# stray uploads excluded from public repo
+uploads/Untitled*.pdf
+uploads/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].pdf
+
+# env / secrets (defense-in-depth; subdir .gitignore also covers)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# node / web
+node_modules/
+dist/
+.vite/
+.next/
+
+# logs / scratch
+*.log
+scratch/

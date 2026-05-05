@@ -1,0 +1,244 @@
+# RLS Apex v1 — domain model
+# Single source of truth. Codegen emits:
+#   - Pydantic types (apps/gateway, mcp-tools/*)
+#   - Alembic migrations (Postgres tables)
+#   - MCP tool input/output schemas (FastMCP)
+#   - Zod types (apps/web — via codegen --target ts)
+#
+# REDLINE THIS BEFORE any `make codegen` runs.
+# Decision rationale → DECISION_LOG.md Lock #12.
+
+version: "0.1.0"
+
+entities:
+
+  # ─────────────────────── core matter ───────────────────────
+  Matter:
+    description: Container for a Request for Legal Services. Keys per-matter ACLs, audit, and classification.
+    fields:
+      id:               { type: string, format: rls_id, example: "RLS-26-0141" }
+      kind:             { type: enum, values: [Ordinance, CodeEnforcement, PublicRecords, Contract, ADA, Other] }
+      title:            { type: string, max: 240 }
+      classification:   { type: ref, target: MatterClassification }
+      status:           { type: enum, values: [Draft, Inbox, Routed, AIReview, Attorney, Complete] }
+      risk:             { type: enum, values: [Low, Medium, High] }
+      requesterId:      { type: string, format: ad_user_principal }
+      teamId:           { type: enum, values: [LandUse, CodeEnforcement, Litigation, Procurement, Other] }
+      createdAt:        { type: datetime }
+      dueDate:          { type: date, nullable: true }
+    constraints:
+      - if: "kind == 'Ordinance'"
+        require: "has_worksheet(kind='BIE')"
+        rationale: "Fla. Stat. §125.66(3)(c) — every proposed county ordinance requires a Business Impact Estimate."
+
+  MatterClassification:
+    description: |
+      Drives per-matter ACL on mcp-tools/docs, corpus-index exclusion, and public-records exemption flags.
+      Load-bearing across multiple decisions (privileged-matter access controls, session-replay exclusion if PostHog ever lands, M-surface deferral).
+    fields:
+      level:            { type: enum, values: [public_record, internal, confidential, privileged] }
+      exemptions:       { type: array, items: { type: string }, description: "Florida public-records exemption codes if any" }
+      setBy:            { type: string, format: ad_user_principal }
+      setAt:            { type: datetime }
+      reviewedBy:       { type: string, format: ad_user_principal, nullable: true, description: "general-counsel sign-off for privileged" }
+
+  # ─────────────────────── worksheets ───────────────────────
+  Worksheet:
+    description: |
+      Polymorphic. BIE is the v0.1.0 instantiation per Fla. Stat. §125.66(3)(c).
+      Per the locked stack, this template propagates to Permit pre-screen, HR Q&A, Budget memo —
+      polymorphic now is cheap; refactoring later is not (Lock #12).
+    fields:
+      id:               { type: string }
+      matterId:         { type: ref, target: Matter }
+      kind:             { type: enum, values: [BIE, PermitPreScreen, HRQA, BudgetMemo] }
+      version:          { type: integer }
+      status:           { type: enum, values: [Draft, Active, Submitted, Posted, Adopted] }
+      content:          { type: object, description: "kind-specific payload — see schemas below" }
+      postingDeadline:  { type: date, nullable: true }
+      createdAt:        { type: datetime }
+    schemas:
+      BIE:
+        purpose:        { type: string, max: 500 }
+        entities:       { type: string, max: 500 }
+        directCost:     { type: string, max: 400 }
+        indirectCost:   { type: string, max: 400 }
+        alternatives:   { type: string, max: 400 }
+        exemptionCheck: { type: object, description: "yes/no answers to the four §125.66 exemption gates" }
+
+  # ─────────────────────── legal corpus ───────────────────────
+  Statute:
+    description: A statutory section indexed for retrieval and graph queries.
+    fields:
+      id:               { type: string, example: "Fla. Stat. §163.31801" }
+      jurisdiction:     { type: enum, values: [federal, florida, manatee_county] }
+      section:          { type: string }
+      title:            { type: string }
+      effectiveDate:    { type: date, nullable: true }
+      bodyChunkIds:     { type: array, items: { type: string }, description: "pgvector chunk ids" }
+
+  Opinion:
+    description: |
+      A legal opinion. Distinguish source via `kind`:
+      - `judicial`: court opinion (case law)
+      - `county_legal`: prior RLS opinion authored by County Attorney's office
+    fields:
+      id:               { type: string, example: "RLS-25-0098" }
+      kind:             { type: enum, values: [judicial, county_legal] }
+      title:            { type: string }
+      author:           { type: string, nullable: true }
+      date:             { type: date }
+      outcome:          { type: enum, values: [Approved, Adopted, Revised, Rejected, Withdrawn], nullable: true }
+      bodyChunkIds:     { type: array, items: { type: string } }
+
+  Citation:
+    description: |
+      Pinpoint reference inside a Statute or Opinion (Claude addition, Lock #12).
+      Provenance is the whole reason for the pilot — citation is first-class.
+    fields:
+      id:               { type: string }
+      sourceId:         { type: string, description: "Statute or Opinion id" }
+      sourceKind:       { type: enum, values: [Statute, Opinion] }
+      pinpoint:         { type: string, example: "(3)(c)2.a." }
+      quote:            { type: string, max: 1200 }
+      retrievalScore:   { type: number, min: 0, max: 1, nullable: true }
+
+  # ─────────────────────── skills (Lock #10) ───────────────────────
+  Skill:
+    description: |
+      Polymorphic. Only `template` lives in git for v0.1.0; `matter_draft` URL space reserved (HTTP 501) until Reviser ships.
+    fields:
+      id:               { type: string }
+      kind:             { type: enum, values: [template, matter_draft] }
+      name:             { type: string }
+      path:             { type: string, nullable: true, description: "git path for templates; null for matter drafts" }
+      matterId:         { type: ref, target: Matter, nullable: true, description: "set iff kind=matter_draft" }
+      governance:
+        type: object
+        fields:
+          owners:               { type: array, items: { type: string } }
+          reviewer_required:    { type: boolean }
+          last_reviewed_by:     { type: string, nullable: true }
+          last_reviewed_at:     { type: datetime, nullable: true }
+      bodyChunkId:      { type: string, description: "current pgvector chunk id" }
+      version:          { type: integer }
+    constraints:
+      - if: "kind == 'matter_draft'"
+        require: "false"
+        rationale: "v0.1.0 Lock #10 — matter_draft surface deferred. Route returns 501."
+
+  # ─────────────────────── audit (Lock #7, #10) ───────────────────────
+  LineageEvent:
+    description: |
+      Hash-chain audit. Stamps every agent step. Captures T→M divergence point (when matter draft branches off a template) and the downstream edit chain.
+    fields:
+      id:               { type: string, example: "ln-26-0141-7c4a" }
+      parentId:         { type: string, nullable: true, description: "previous link in chain" }
+      contentHash:      { type: string, description: "sha256, content-derived but salted (uninvertible)" }
+      actor:            { type: string, format: ad_user_principal }
+      actorRole:        { type: enum, values: [attorney, paralegal, general_counsel, admin, agent] }
+      action:           { type: enum, values: [retrieve, draft, edit, classify, score, post, submit, complete] }
+      subjectKind:      { type: enum, values: [Matter, Worksheet, Skill, Opinion, Redline, Other] }
+      subjectId:        { type: string }
+      payload:          { type: object, description: "action-specific metadata; never raw content" }
+      createdAt:        { type: datetime }
+
+  Redline:
+    description: |
+      Attorney review markup (Claude addition, Lock #12).
+      Gates GEPA week 5–6 — without a typed entity the GEPA training set has no schema.
+    fields:
+      id:               { type: string }
+      targetKind:       { type: enum, values: [Worksheet, Skill, Opinion] }
+      targetId:         { type: string }
+      attorney:         { type: string, format: ad_user_principal }
+      verdict:          { type: enum, values: [accept, accept_with_edits, reject] }
+      diff:             { type: string, description: "unified-diff string scoped to the target body" }
+      rationale:        { type: string, max: 2000, nullable: true }
+      createdAt:        { type: datetime }
+
+  # ─────────────────────── ROI (Rule #18) ───────────────────────
+  ROIEvent:
+    description: |
+      Schema-bound to apps/gateway/manatee_ai_roi.schema.json. Imported, not redefined here.
+      One event per user-facing action (not per MCP tool call) to avoid double-counting.
+    schemaRef: "apps/gateway/manatee_ai_roi.schema.json"
+
+# ─────────────────────── relations ───────────────────────
+relations:
+
+  - subject: Matter
+    predicate: requires
+    object: Worksheet
+    cardinality: "0..*"
+    constraint: "Matter.kind=Ordinance ⇒ at least one Worksheet.kind=BIE"
+
+  - subject: Worksheet
+    predicate: cites
+    object: Statute
+    cardinality: "0..*"
+
+  - subject: Opinion
+    predicate: cites
+    object: { oneOf: [Statute, Opinion] }
+    cardinality: "0..*"
+
+  - subject: Statute
+    predicate: preempts
+    object: Statute
+    cardinality: "0..*"
+    rationale: "Florida home-rule preemption (e.g., §163.31801)"
+
+  - subject: Citation
+    predicate: of
+    object: { oneOf: [Statute, Opinion] }
+    cardinality: "1"
+
+  - subject: Skill
+    predicate: derivedFrom
+    object: Skill
+    cardinality: "0..1"
+    constraint: "matter_draft.derivedFrom MUST be a template (T→M divergence is logged via LineageEvent)"
+
+  - subject: LineageEvent
+    predicate: parentOf
+    object: LineageEvent
+    cardinality: "0..*"
+
+  - subject: Redline
+    predicate: targets
+    object: { oneOf: [Worksheet, Skill, Opinion] }
+    cardinality: "1"
+
+# ─────────────────────── role → action policy ───────────────────────
+# Used by mcp-tools/docs and mcp-tools/lineage to enforce ACL.
+roles:
+
+  attorney:
+    can_read:    [Matter, Worksheet, Statute, Opinion, Citation, Skill, Redline, LineageEvent]
+    can_write:   [Worksheet, Redline]
+    excluded_classifications: []   # attorneys see all by default; team-level ACL is separate
+
+  paralegal:
+    can_read:    [Matter, Worksheet, Statute, Opinion, Citation, Skill, LineageEvent]
+    can_write:   [Worksheet]
+    excluded_classifications: [privileged]
+
+  general_counsel:
+    can_read:    "*"
+    can_write:   "*"
+    excluded_classifications: []
+
+  admin:
+    can_read:    [Matter, LineageEvent, ROIEvent]
+    can_write:   []
+    excluded_classifications: [privileged, confidential]
+
+# ─────────────────────── codegen targets ───────────────────────
+# `make codegen` reads this file and emits to:
+codegen:
+  python_pydantic:  apps/gateway/_generated/types.py
+  python_pydantic_mcp: mcp-tools/_generated/schemas.py
+  ts_zod:           apps/web/src/_generated/types.ts
+  alembic:          apps/gateway/alembic/versions/_generated_baseline.py
+  mcp_tool_specs:   mcp-tools/_generated/tool_specs.json

@@ -1,0 +1,232 @@
+# RLS Apex v1 — Domain Model
+#
+# Single source of truth. Drives:
+#   - Pydantic types (apps/gateway/types/)
+#   - Alembic migrations (infra/alembic/)
+#   - MCP tool schemas (mcp-tools/*/schemas/)
+#   - DSPy signatures (agents/*/signatures.py)
+#
+# Redline freely. Codegen runs only after this file is locked for v0.1.0.
+
+version: "0.1.0"
+generated_from: prototype + decision_log#13
+
+# ─────────────────────────────────────────────────────────────────
+# Classifications & enums
+# ─────────────────────────────────────────────────────────────────
+enums:
+  MatterStatus:    [Draft, Inbox, Routed, AIReview, Attorney, Complete, Archived]
+  MatterKind:      [Ordinance, CodeEnforcement, ContractReview, PublicRecords, Litigation, Other]
+  MatterClassification: [Public, Internal, Confidential, Privileged]   # drives ACLs, corpus exclusion
+  Risk:            [Low, Medium, High, Critical]
+  WorksheetKind:   [BIE, Permit, HRQA]                                  # polymorphic per Decision #12
+  WorksheetStatus: [Draft, AwaitingPosting, Posted, Adopted, Withdrawn]
+  SkillKind:       [Template, MatterDraft]                              # MatterDraft reserved, not built v0.1.0
+  RedlineKind:     [Insertion, Deletion, Replacement, Comment]
+  Role:            [attorney, paralegal, general_counsel, admin, viewer]
+
+# ─────────────────────────────────────────────────────────────────
+# Entities
+# ─────────────────────────────────────────────────────────────────
+entities:
+
+  Matter:
+    description: Top-level container for a single Request for Legal Services.
+    fields:
+      id:               { type: uuid, pk: true }
+      number:           { type: string, unique: true, example: "RLS-26-0141" }
+      kind:             { type: MatterKind }
+      classification:   { type: MatterClassification, default: Internal }
+      status:           { type: MatterStatus, default: Draft }
+      risk:             { type: Risk, nullable: true }
+      title:            { type: string, max: 240 }
+      summary:          { type: text, nullable: true }
+      requester_id:     { type: uuid, fk: User.id }
+      assignee_id:      { type: uuid, fk: User.id, nullable: true }
+      due_date:         { type: date, nullable: true }
+      created_at:       { type: timestamp, default: now }
+      updated_at:       { type: timestamp, default: now, on_update: now }
+    constraints:
+      - "kind=Ordinance ⟹ has_one(Worksheet WHERE kind=BIE)"
+      - "classification=Privileged ⟹ excluded from corpus_index"
+      - "status transitions follow MatterStatus state machine"
+    indexes:
+      - [classification, status]
+      - [assignee_id, status]
+
+  Worksheet:
+    description: Polymorphic worksheet attached to a Matter. BIE is one kind.
+    fields:
+      id:               { type: uuid, pk: true }
+      matter_id:        { type: uuid, fk: Matter.id }
+      kind:             { type: WorksheetKind }
+      status:           { type: WorksheetStatus, default: Draft }
+      version:          { type: int, default: 1 }
+      payload:          { type: jsonb }                 # shape validated against kind-specific schema
+      posting_date:     { type: date, nullable: true }
+      adoption_date:    { type: date, nullable: true }
+      created_at:       { type: timestamp, default: now }
+    constraints:
+      - "kind=BIE ⟹ payload conforms to schemas/worksheet.bie.v1.json"
+      - "kind=BIE AND status=Posted ⟹ posting_date >= adoption_date - 14 days  # §125.66(3)(c)"
+    indexes:
+      - [matter_id, kind]
+
+  Statute:
+    description: Citable statutory provision (FL stat, county code, federal, etc).
+    fields:
+      id:               { type: uuid, pk: true }
+      jurisdiction:     { type: string, example: "FL" }
+      code:             { type: string, example: "Fla. Stat." }
+      section:          { type: string, example: "§125.66(3)(c)" }
+      title:            { type: string }
+      effective_date:   { type: date, nullable: true }
+      version_date:     { type: date }
+      body:             { type: text }
+    indexes:
+      - [code, section]
+
+  Opinion:
+    description: Either a judicial opinion (case law) OR an internal county legal opinion.
+    fields:
+      id:               { type: uuid, pk: true }
+      kind:             { type: enum, values: [Judicial, CountyLegal] }
+      caption:          { type: string }                # case name OR memo title
+      cite:             { type: string, nullable: true } # "999 So. 2d 1086"
+      author_id:        { type: uuid, fk: User.id, nullable: true }
+      decided_at:       { type: date, nullable: true }
+      classification:   { type: MatterClassification, default: Internal }
+      body:             { type: text }
+    indexes:
+      - [kind, decided_at]
+
+  Citation:
+    description: A pinpoint reference from one document into a Statute or Opinion.
+    notes: First-class for provenance. Legal RAG without typed citations hides provenance.
+    fields:
+      id:               { type: uuid, pk: true }
+      from_kind:        { type: enum, values: [Matter, Worksheet, Opinion, Skill] }
+      from_id:          { type: uuid }
+      to_kind:          { type: enum, values: [Statute, Opinion] }
+      to_id:            { type: uuid }
+      pin:              { type: string, nullable: true, example: "(3)(c)" }
+      span:             { type: jsonb, nullable: true }   # {start, end} inside from_kind body
+      confidence:       { type: float, nullable: true }
+    indexes:
+      - [from_kind, from_id]
+      - [to_kind, to_id]
+
+  Skill:
+    description: Procedural knowledge unit. v0.1.0 ships Template kind only.
+    fields:
+      id:               { type: uuid, pk: true }
+      kind:             { type: SkillKind }
+      name:             { type: string, unique_with: [kind] }
+      path:             { type: string, nullable: true } # for Template: skills/templates/<name>.md
+      content:          { type: text }                   # rendered markdown body
+      frontmatter:      { type: jsonb }                  # governance, owners, etc
+      version:          { type: int, default: 1 }
+      reviewer_required: { type: bool, default: true }   # Templates default to PR review
+      owners:           { type: "array<string>" }
+      updated_by_id:    { type: uuid, fk: User.id }
+      updated_at:       { type: timestamp, default: now, on_update: now }
+    constraints:
+      - "kind=Template ⟹ path NOT NULL  # template lives in git"
+      - "kind=MatterDraft ⟹ reserved, returns 501 in v0.1.0"
+
+  Redline:
+    description: Attorney review markup. Gates GEPA compile (week 5–6).
+    fields:
+      id:               { type: uuid, pk: true }
+      target_kind:      { type: enum, values: [Worksheet, Opinion, Skill] }
+      target_id:        { type: uuid }
+      kind:             { type: RedlineKind }
+      span:             { type: jsonb }                  # {start, end}
+      replacement:      { type: text, nullable: true }
+      comment:          { type: text, nullable: true }
+      attorney_id:      { type: uuid, fk: User.id }
+      created_at:       { type: timestamp, default: now }
+      lineage_id:       { type: string }                 # joins to LineageEvent
+    indexes:
+      - [target_kind, target_id]
+      - [attorney_id, created_at]
+
+  LineageEvent:
+    description: Hash-chained audit row for every agent / tool / edit action.
+    fields:
+      id:               { type: uuid, pk: true }
+      lineage_id:       { type: string, indexed: true, example: "ln-26-0141-7c4a" }
+      parent_lineage:   { type: string, nullable: true }
+      actor_id:         { type: uuid, fk: User.id, nullable: true }   # null = system
+      agent:            { type: string, nullable: true, example: "PrecedentRetriever" }
+      tool:             { type: string, nullable: true, example: "retrieve" }
+      model:            { type: string, nullable: true, example: "qwen2.5-14b-fp8" }
+      input_hash:       { type: string }
+      output_hash:      { type: string }
+      payload_ref:      { type: string, nullable: true }  # MinIO object key for full payload
+      hash_prev:        { type: string, nullable: true }
+      hash_self:        { type: string }
+      created_at:       { type: timestamp, default: now }
+    notes: |
+      Hash chain: hash_self = SHA256(hash_prev || canonical(this_row_minus_hashes)).
+      Salted via per-deployment HMAC key in KV, so lineage IDs are content-derived but not invertible.
+
+  ROIEvent:
+    description: Per-action telemetry, schema-bound to manatee_ai_roi.schema (Rule #18).
+    notes: Schema imported, not redefined here. Stored as JSONB; emitted to Power BI pipeline.
+    fields:
+      id:               { type: uuid, pk: true }
+      payload:          { type: jsonb }                  # validates against external schema
+      created_at:       { type: timestamp, default: now }
+
+  MatterClassification:
+    description: Audit row whenever a Matter's classification changes.
+    fields:
+      id:               { type: uuid, pk: true }
+      matter_id:        { type: uuid, fk: Matter.id }
+      from_value:       { type: string, nullable: true }
+      to_value:         { type: string }
+      reason:           { type: text }
+      decided_by_id:    { type: uuid, fk: User.id }
+      decided_at:       { type: timestamp, default: now }
+    indexes:
+      - [matter_id, decided_at]
+
+  User:
+    description: Sourced from Entra ID; never hand-created.
+    fields:
+      id:               { type: uuid, pk: true }
+      entra_object_id:  { type: string, unique: true }
+      email:            { type: string, unique: true }
+      display_name:     { type: string }
+      roles:            { type: "array<Role>" }
+      ad_groups:        { type: "array<string>" }       # raw SIDs cached
+      last_login:       { type: timestamp, nullable: true }
+
+# ─────────────────────────────────────────────────────────────────
+# Graph relations (AGE)
+# ─────────────────────────────────────────────────────────────────
+graph:
+  schema: civic
+  nodes:    [Matter, Worksheet, Statute, Opinion, Citation, Skill, User]
+  edges:
+    - { from: Citation,  to: Statute,   label: cites }
+    - { from: Citation,  to: Opinion,   label: cites }
+    - { from: Statute,   to: Statute,   label: preempts }
+    - { from: Statute,   to: Statute,   label: parallels }
+    - { from: Worksheet, to: Statute,   label: implements }
+    - { from: Opinion,   to: Statute,   label: applies }
+    - { from: Opinion,   to: Opinion,   label: reviseOf }
+    - { from: Matter,    to: Worksheet, label: requires }
+    - { from: Skill,     to: Worksheet, label: drafts }
+
+# ─────────────────────────────────────────────────────────────────
+# Roles & access
+# ─────────────────────────────────────────────────────────────────
+access:
+  rules:
+    - "role=viewer    ⟹ read(Matter WHERE classification IN [Public, Internal])"
+    - "role=paralegal ⟹ read+write(Matter WHERE classification != Privileged)"
+    - "role=attorney  ⟹ full access; Redline write requires attorney role"
+    - "role=general_counsel ⟹ full access + Skill template merge approval"
+    - "role=admin     ⟹ system access; cannot read Privileged matter bodies"

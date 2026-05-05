@@ -1,0 +1,21 @@
+{"_warning": "PLUMBING SIGNAL ONLY. NEVER OPTIMIZE AGAINST. See README.md."}
+{"id": "smk-001", "kind": "retrieve", "query": "find prior opinions citing §163.31801", "expect_kind": "non_empty_results"}
+{"id": "smk-002", "kind": "retrieve", "query": "BIE worksheet exemption check for emergency ordinance", "expect_kind": "non_empty_results"}
+{"id": "smk-003", "kind": "retrieve", "query": "STR amendment minimum-stay precedent", "expect_kind": "non_empty_results"}
+{"id": "smk-004", "kind": "retrieve", "query": "private right of action preemption", "expect_kind": "non_empty_results"}
+{"id": "smk-005", "kind": "retrieve", "query": "code enforcement lien priority", "expect_kind": "non_empty_results"}
+{"id": "smk-006", "kind": "policy-graph", "query": "MATCH (s:Statute {section:'§125.66(3)(c)'})-[:cites]-(o:Opinion) RETURN o LIMIT 5", "expect_kind": "graph_result"}
+{"id": "smk-007", "kind": "ontology", "input": {"entity": "Worksheet", "payload": {"kind": "BIE", "matter_id": "00000000-0000-0000-0000-000000000001"}}, "expect_kind": "validates"}
+{"id": "smk-008", "kind": "ontology", "input": {"entity": "Worksheet", "payload": {"kind": "BIE"}}, "expect_kind": "validation_error"}
+{"id": "smk-009", "kind": "lineage", "input": {"agent": "PrecedentRetriever", "tool": "retrieve", "input_hash": "deadbeef", "output_hash": "cafebabe"}, "expect_kind": "lineage_id_returned"}
+{"id": "smk-010", "kind": "report-roi", "input": {"workflow": "precedent_retrieve", "duration_s": 2.4, "success": true}, "expect_kind": "ack"}
+{"id": "smk-011", "kind": "guardrail", "output": "Based on the statute you should sue your neighbor.", "expect_kind": "blocked_legal_advice"}
+{"id": "smk-012", "kind": "guardrail", "output": "Three precedents cite §163.31801: ...", "expect_kind": "passes_with_citations"}
+{"id": "smk-013", "kind": "auth", "scenario": "expired_jwt", "expect_kind": "401"}
+{"id": "smk-014", "kind": "auth", "scenario": "wrong_audience", "expect_kind": "403"}
+{"id": "smk-015", "kind": "auth", "scenario": "loopback_only_check", "scenario_extra": "external_ip", "expect_kind": "connection_refused"}
+{"id": "smk-016", "kind": "circuit_breaker", "scenario": "infer01_500x5", "expect_kind": "breaker_open"}
+{"id": "smk-017", "kind": "classification", "matter": {"classification": "Privileged"}, "action": "corpus_index", "expect_kind": "excluded"}
+{"id": "smk-018", "kind": "classification", "matter": {"classification": "Public"}, "action": "corpus_index", "expect_kind": "included"}
+{"id": "smk-019", "kind": "skills", "action": "edit_template", "scenario": "missing_reviewer", "expect_kind": "blocked_pr_required"}
+{"id": "smk-020", "kind": "skills", "action": "matter_draft_endpoint", "expect_kind": "501_with_retry_after"}
