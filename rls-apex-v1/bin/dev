@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Local click-through. Mocks /api/query, bypasses OIDC, serves apps/web/static.
+# Same command works on bcc-ap-llm01 once the venv is set up there.
+#
+# By default installs requirements-mock.txt (fastapi+uvicorn only — fast).
+# Pass `--full` to install the production requirements.txt (DSPy, Phoenix, etc).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+REQ="apps/gateway/requirements-mock.txt"
+if [[ "${1:-}" == "--full" ]]; then
+  REQ="apps/gateway/requirements.txt"
+  shift
+fi
+
+if [[ ! -d .venv ]]; then
+  echo "[dev] no .venv — bootstrapping with $REQ…"
+  python3 -m venv .venv
+  ./.venv/bin/pip install -q --upgrade pip
+  ./.venv/bin/pip install -q -r "$REQ"
+fi
+
+export DEV_AUTH_BYPASS=1
+export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+
+exec ./.venv/bin/uvicorn apps.gateway.main:app \
+  --host "${HOST:-127.0.0.1}" \
+  --port "${PORT:-8080}" \
+  --reload
