@@ -557,7 +557,7 @@ _AGENT_SCRIPTS: dict[str, dict] = {
     },
     "decide": {
         "label": "Apply decision",
-        "steps": [("validate_decision", 60), ("update_status", 100), ("notify_requester", 90), ("emit_lineage", 50), ("emit_roi", 40)],
+        "steps": [("validate_decision", 60), ("update_status", 100), ("notify_requester", 90), ("emit_lineage", 50), ("emit_roi", 40), ("compose", 0)],
         "answer_template": "Decision={decision} applied to {rls_id}. Status -> {new_status}. Requester notified. Lineage stamped. ROI event emitted.",
     },
     "draft": {

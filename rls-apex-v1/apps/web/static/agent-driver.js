@@ -30,17 +30,39 @@
     'edit', 'view', 'open',
   ]);
 
+  // Routes match the prototype's actual button verbs (Mark complete, Submit
+  // RLS, Submit for posting, Resolve, etc.) not aspirational Accept/Reject.
+  // Anchors (^...$) are intentional — partial matches misroute.
   const ROUTES = [
-    { test: /\bnew rls\b|\bnew submission\b|\bcreate\b|\bstart\b/i,            kind: 'triage', tone: 'New submission' },
-    { test: /\b(submit|send for review)\b/i,                                    kind: 'triage', tone: 'Submitting' },
-    { test: /\b(accept|approve|acknowledge|✓ accept)\b/i,                       kind: 'decide', extra: { decision: 'accept' } },
-    { test: /\b(reject|deny|✗ reject)\b/i,                                      kind: 'decide', extra: { decision: 'reject' } },
-    { test: /\b(return|send back|revise|request revision)\b/i,                  kind: 'decide', extra: { decision: 'return' } },
-    { test: /\b(find precedents?|search precedents?|precedent search)\b/i,      kind: 'precedent' },
-    { test: /\b(draft|compose|generate response|write reply)\b/i,               kind: 'draft' },
-    { test: /\b(score|check completeness|completeness)\b/i,                     kind: 'completeness' },
-    { test: /\b(summari[sz]e|tl;dr|key points)\b/i,                              kind: 'summarize' },
-    { test: /\b(ask|run|go)\b/i,                                                kind: 'precedent' }, // generic ask
+    // Decide (accept-class actions)
+    { test: /^(✓ accept|accept|approve|acknowledge|mark complete|mark as complete|resolve)$/i,
+      kind: 'decide', extra: { decision: 'accept' } },
+    // Decide (reject-class)
+    { test: /^(✗ reject|reject|deny)$/i,
+      kind: 'decide', extra: { decision: 'reject' } },
+    // Decide (return-class)
+    { test: /^(return|send back|revise|request revision|return for revision)$/i,
+      kind: 'decide', extra: { decision: 'return' } },
+    // Triage (new + submit)
+    { test: /^(new rls|new submission|new worksheet|new draft|create|start)$/i,
+      kind: 'triage' },
+    { test: /^(submit|submit rls|submit for posting|submit for review|send for review|send)$/i,
+      kind: 'triage' },
+    // Precedent / retrieval
+    { test: /^(find precedents?|search precedents?|precedent search|search nodes|search)$/i,
+      kind: 'precedent' },
+    // Draft / compose
+    { test: /^(draft|compose|generate response|write reply|generate)$/i,
+      kind: 'draft' },
+    // Completeness
+    { test: /^(score|check completeness|completeness|run readiness check)$/i,
+      kind: 'completeness' },
+    // Summary
+    { test: /^(summari[sz]e|tl;dr|key points|key takeaways)$/i,
+      kind: 'summarize' },
+    // Generic Ask (chat send) — last so anchored matches above win
+    { test: /^(ask|run|go)$/i,
+      kind: 'precedent' },
   ];
 
   // ─── Panel ──────────────────────────────────────────────────────

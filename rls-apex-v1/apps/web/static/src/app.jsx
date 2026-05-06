@@ -14,14 +14,15 @@ function App() {
   const [route, setRoute] = React.useState("dashboard");
   const [detailId, setDetailId] = React.useState(null);
 
-  // Dev hook: expose route setter only when explicitly running UI-simplicity
-  // checks (Playwright sets window.__RLS_TEST; users can also pass
-  // ?ui_simplicity=1). No-op in prod.
+  // Dev hook: expose route + detail navigation only when explicitly running
+  // UI-simplicity / verification checks. No-op in prod.
   React.useEffect(() => {
     if (window.__RLS_TEST || /\bui_simplicity=1\b/.test(window.location.search)) {
       window.__RLS_ROUTE_SET = setRoute;
+      window.__RLS_DETAIL_SET = setDetailId;
+      window.__RLS_GO = (r, id) => { if (id) setDetailId(id); setRoute(r); };
     }
-  }, [setRoute]);
+  }, [setRoute, setDetailId]);
 
   React.useEffect(() => {
     document.body.dataset.sidebar = tweaks.sidebar;
