@@ -247,15 +247,22 @@ _MOCKS: list[tuple[str, dict]] = [
         r"sole.?source|125\.65|no.?bid|single.source",
         {
             "intent": "sole_source_findings",
+            "score": 35,  # rejection-probability 0-100 (higher = more likely to be rejected)
+            "band": "medium",
+            "cure_path": [
+                {"title": "Add dated findings memo predating execution",
+                 "detail": "§125.65(2) requires written findings on file BEFORE contract execution. Memo must be dated at least one business day before the proposed execution date.",
+                 "citation_id": "Fla. Stat. §125.65"},
+                {"title": "Re-attach the redated findings memo to the RLS",
+                 "detail": "RLS-24-0431 was accepted on the same fact pattern after the findings memo was redated and re-attached.",
+                 "citation_id": "RLS-24-0431"},
+            ],
             "answer": (
-                "Based on three precedents in the County Attorney corpus, the proposed "
-                "sole-source procurement is workable but carries one hard cure condition: "
-                "Fla. Stat. §125.65(2) requires written findings on file BEFORE contract "
-                "execution. RLS-25-0114 was rejected because findings were drafted "
-                "concurrently with the contract; RLS-24-0431 was accepted on the same fact "
-                "pattern after the findings memo was redated. Recommend revising the draft "
-                "to attach the findings memo with a date at least one business day before "
-                "the proposed execution date."
+                "Sole-source procurement is workable on this fact pattern, but as drafted "
+                "the findings memo is concurrent with execution. The corpus shows two "
+                "outcomes for that exact issue: rejected (RLS-25-0114) when findings "
+                "were drafted concurrently, accepted (RLS-24-0431) once the memo predated "
+                "execution. The cure path is mechanical, not substantive."
             ),
             "citations": [
                 {"id": "RLS-25-0114", "source_kind": "opinion", "pinpoint": "p. 4 ¶ 3",
@@ -271,14 +278,21 @@ _MOCKS: list[tuple[str, dict]] = [
         r"evergreen|renewal|125\.66|36.month|60.month|auto.?renew",
         {
             "intent": "term_cap_evergreen",
+            "score": 78,
+            "band": "high",
+            "cure_path": [
+                {"title": "Strip evergreen renewal language from the contract",
+                 "detail": "§125.66(3)(c) caps service contracts at 36 months absent annual board reauthorization. Auto-renewal beyond 36 months is unenforceable.",
+                 "citation_id": "Fla. Stat. §125.66"},
+                {"title": "Replace with 36-month base + explicit annual board action",
+                 "detail": "Pattern accepted in RLS-24-0289 after the 60-month evergreen was narrowed. 5-year evergreens (RLS-23-0512) were voided entirely.",
+                 "citation_id": "RLS-24-0289"},
+            ],
             "answer": (
-                "The 36-month term cap in Fla. Stat. §125.66(3)(c) is hard. Auto-renewal "
-                "language extending the term beyond 36 months without annual board "
-                "reauthorization is unenforceable against the County. RLS-24-0289 narrowed "
-                "an attempted 60-month evergreen to 36; RLS-23-0512 voided a 5-year IT "
-                "services renewal entirely. If the business goal is continuity, the "
-                "vendor-side workaround is a 36-month base with explicit board action "
-                "for each renewal — not an evergreen clause."
+                "Evergreen extends the term beyond §125.66(3)(c)'s 36-month cap and is "
+                "unenforceable against the County as drafted. The cure is structural: a "
+                "36-month base with annual board reauthorization replaces the auto-renewal "
+                "clause. Continuity is preserved; enforceability is restored."
             ),
             "citations": [
                 {"id": "RLS-24-0289", "source_kind": "opinion", "pinpoint": "p. 2 ¶ 1",
@@ -294,6 +308,19 @@ _MOCKS: list[tuple[str, dict]] = [
         r"permit|zoning|land.use|variance|setback",
         {
             "intent": "permit_or_zoning",
+            "score": 55,
+            "band": "medium",
+            "cure_path": [
+                {"title": "Attach dated approval predating the LDC amendment",
+                 "detail": "Vested-rights claim under prior LDC §6.4.A.5 must show the approval was issued BEFORE the 2024 amendment.",
+                 "citation_id": "RLS-25-0067"},
+                {"title": "Show evidence of continuous use since approval",
+                 "detail": "Bare assertion of vested rights insufficient — needs documented continuous use of the rights granted.",
+                 "citation_id": "LDC §6.4"},
+                {"title": "Cite the LDC section in force AT THE TIME of the original approval",
+                 "detail": "Current LDC text does not control; the version in force when the approval was issued does.",
+                 "citation_id": "Fla. Stat. §163.3167"},
+            ],
             "answer": (
                 "Permit and zoning RLS submissions are governed by the Manatee County "
                 "Land Development Code (LDC) cross-referenced with Fla. Stat. ch. 163. "
@@ -317,6 +344,19 @@ _MOCKS: list[tuple[str, dict]] = [
         r"public.records|chapter 119|sunshine|exempt",
         {
             "intent": "public_records",
+            "score": 82,
+            "band": "high",
+            "cure_path": [
+                {"title": "Re-classify the records — §119.071(2)(d) does not apply to civil matters",
+                 "detail": "The active-investigation exemption is criminal-only. Civil litigation records arising from the same facts are not covered.",
+                 "citation_id": "RLS-24-0904"},
+                {"title": "Identify the correct exemption (or release)",
+                 "detail": "Closest applicable for this fact pattern: §119.0712(2) for motor-vehicle records IF the records contain DAVID-derived data. Verify before relying.",
+                 "citation_id": "Fla. Stat. §119.0712"},
+                {"title": "If no exemption applies, prepare release with redactions",
+                 "detail": "Strict construction applies — Chapter 119 favors disclosure. Default: release with statutory redactions only.",
+                 "citation_id": "RLS-23-0188"},
+            ],
             "answer": (
                 "Chapter 119 exemptions are narrow and strictly construed. The draft as "
                 "written claims §119.071(2)(d) (active criminal investigation) but the "
@@ -340,6 +380,16 @@ _MOCKS: list[tuple[str, dict]] = [
 
 _DEFAULT_MOCK = {
     "intent": "general_procurement",
+    "score": 45,
+    "band": "medium",
+    "cure_path": [
+        {"title": "Add dated findings memo predating execution",
+         "detail": "If procurement is sole-source, §125.65(2) requires findings on file before contract execution.",
+         "citation_id": "RLS-25-0114"},
+        {"title": "Cap the term at 36 months with explicit board reauthorization for renewals",
+         "detail": "§125.66(3)(c) caps service contracts at 36 months unless the board explicitly reauthorizes.",
+         "citation_id": "RLS-24-0289"},
+    ],
     "answer": (
         "Based on the three closest precedents in the County Attorney corpus, the "
         "proposed scope is workable in form but two cure conditions apply. First, "
@@ -435,6 +485,10 @@ async def _mock_query_stream(question: str) -> AsyncIterator[bytes]:
         "output_tokens": 110 + random.randint(-15, 20),
         "lineage_id": f"ln-mock-{random.randint(1000, 9999)}",
         "intent": mock["intent"],
+        # Pilot's named outputs — surface them on the UI above citations.
+        "score": mock.get("score"),
+        "band": mock.get("band"),
+        "cure_path": mock.get("cure_path", []),
         "citations_source": "corpus" if real_hits else "canned",
         "llm_provider": _llm.provider() if _LLM_OK else "mock",
     })

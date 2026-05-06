@@ -48,6 +48,73 @@ function StepRibbon({ steps }) {
   );
 }
 
+function ScoreBlock({ score, band, intent }) {
+  if (score == null) return null;
+  const bandStyle = {
+    low:              { bg: "color-mix(in oklab, var(--success) 12%, white)",     fg: "var(--success)",     label: "LOW" },
+    medium:           { bg: "color-mix(in oklab, var(--warning) 12%, white)",     fg: "var(--warning)",     label: "MEDIUM" },
+    high:             { bg: "color-mix(in oklab, var(--destructive) 14%, white)", fg: "var(--destructive)", label: "HIGH" },
+    likely_rejected:  { bg: "var(--destructive)",                                  fg: "white",              label: "LIKELY REJECTED" },
+  }[band] || { bg: "var(--muted)", fg: "var(--ink-2)", label: (band || "—").toUpperCase() };
+  return (
+    <div style={{
+      marginTop: 22, padding: "16px 18px",
+      background: bandStyle.bg, border: `1px solid ${bandStyle.fg}`, borderRadius: 8,
+      display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 14,
+    }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: bandStyle.fg, letterSpacing: 0.06, textTransform: "uppercase" }}>Rejection probability</div>
+        <div className="num" style={{ fontSize: 28, fontWeight: 700, color: bandStyle.fg, lineHeight: 1.1, marginTop: 2 }}>{score}<span style={{ fontSize: 14, fontWeight: 500, marginLeft: 2 }}>/100</span></div>
+      </div>
+      <div style={{ paddingLeft: 14, borderLeft: `1px solid ${bandStyle.fg}40` }}>
+        <div style={{
+          display: "inline-block", padding: "3px 10px", borderRadius: 999,
+          background: bandStyle.fg, color: bandStyle.bg, fontSize: 11, fontWeight: 700, letterSpacing: 0.08,
+        }}>{bandStyle.label}</div>
+        <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 6 }}>Classified as <span className="mono" style={{ color: bandStyle.fg, fontWeight: 600 }}>{intent || "—"}</span></div>
+      </div>
+    </div>
+  );
+}
+
+function CurePath({ items, citations }) {
+  if (!items || !items.length) return null;
+  const cmap = {};
+  for (const c of (citations || [])) cmap[c.id] = c;
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.06, color: "var(--ink-3)", marginBottom: 8 }}>
+        Cure path · {items.length} step{items.length === 1 ? "" : "s"}
+      </div>
+      <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
+        {items.map((it, i) => (
+          <li key={i} style={{
+            display: "grid", gridTemplateColumns: "28px 1fr", gap: 10,
+            padding: "10px 14px", marginTop: i ? 6 : 0,
+            background: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 8,
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: 11,
+              background: "color-mix(in oklab, var(--primary) 14%, white)", color: "var(--primary-ink)",
+              fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center",
+            }}>{i + 1}</div>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.4 }}>{it.title}</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4, lineHeight: 1.55 }}>{it.detail}</div>
+              {it.citation_id && (
+                <div style={{ marginTop: 6 }}>
+                  <span className="mono" style={{ fontSize: 11, color: "var(--primary)", fontWeight: 600 }}>{it.citation_id}</span>
+                  {cmap[it.citation_id]?.pinpoint && <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", marginLeft: 6 }}>· {cmap[it.citation_id].pinpoint}</span>}
+                </div>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function CitationCard({ c }) {
   return (
     <div style={{
@@ -195,15 +262,26 @@ const AiPage = ({ go }) => {
             </div>
           )}
 
-          {/* Result section */}
+          {/* Result section — pilot's named outputs land FIRST */}
           {hasResult && <StepRibbon steps={steps} />}
 
+          {/* 1. Rejection-probability score (the headline output) */}
+          {done && <ScoreBlock score={done.score} band={done.band} intent={done.intent} />}
+
+          {/* 2. Cure-path checklist (the action a staffer takes) */}
+          {done && <CurePath items={done.cure_path} citations={citations} />}
+
+          {/* 3. Supporting reasoning */}
           {hasResult && (
-            <div style={{ marginTop: 8, padding: 18, background: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.65, fontSize: 14, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>
-              {answer || (validating ? <span style={{ color: "var(--ink-3)" }}>…</span> : null)}
-            </div>
+            <>
+              <div style={{ marginTop: 18, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.06, color: "var(--ink-3)" }}>Reasoning</div>
+              <div style={{ marginTop: 6, padding: 18, background: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.65, fontSize: 14, color: "var(--ink-1)", whiteSpace: "pre-wrap" }}>
+                {answer || (validating ? <span style={{ color: "var(--ink-3)" }}>…</span> : null)}
+              </div>
+            </>
           )}
 
+          {/* 4. Citations */}
           {citations.length > 0 && (
             <>
               <div style={{ marginTop: 18, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.06, color: "var(--ink-3)" }}>Citations</div>

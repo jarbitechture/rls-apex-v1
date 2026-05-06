@@ -125,8 +125,8 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
         }}>⌘K</span>
       </div>
 
-      {/* primary new-rls CTA */}
-      <button onClick={onNew} style={{
+      {/* primary CTA — routes to Validate (the pilot's flow) */}
+      <button onClick={() => setRoute("ai")} style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
         height: 32, marginBottom: 14,
         background: "var(--primary)", color: "white",
@@ -135,41 +135,18 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
         cursor: "pointer", letterSpacing: 0.1,
         boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.08)",
       }}>
-        <I.Plus size={14} stroke={2} /> New RLS
-        <span className="mono" style={{
-          fontSize: 9.5, marginLeft: 4,
-          padding: "1px 4px", borderRadius: 3,
-          background: "rgba(255,255,255,0.18)",
-        }}>N</span>
+        <I.Plus size={14} stroke={2} /> Validate a draft
       </button>
 
       <div style={{ overflowY: "auto", flex: 1, marginRight: -8, paddingRight: 8 }}>
+        {/* v0.1.0 ships only the routes backed by real wiring. Mock-data
+            surfaces (Dashboard, Submissions, Inbox, Drafts, Workflows,
+            Saved views) are intentionally hidden until they have backing
+            data — they were misleading the pilot's stated maturity. */}
         <NavSection>
-          <NavItem icon={<I.Dashboard size={15} />} label="Dashboard" active={route === "dashboard"} onClick={() => setRoute("dashboard")} kbd="G D" />
-          <NavItem icon={<I.List size={15} />} label="Submissions" count={47} active={route === "submissions"} onClick={() => setRoute("submissions")} kbd="G S" />
-          <NavItem icon={<I.Bell size={15} />} label="Inbox" count={3} urgent active={route === "inbox"} onClick={() => setRoute("inbox")} />
-          <NavItem icon={<I.Doc size={15} />} label="Drafts" count={2} active={route === "drafts"} onClick={() => setRoute("drafts")} />
-        </NavSection>
-
-        <NavSection label="Workflows">
-          <NavItem icon={<I.Building size={15} />} label="Code Enforcement" count={8} active={route === "ce"} onClick={() => setRoute("ce")} />
-          <NavItem icon={<I.Scale size={15} />} label="BIE Worksheets" count={4} active={route === "bie"} onClick={() => setRoute("bie")} />
-          <NavItem icon={<I.Map size={15} />} label="Land Use & Planning" count={11} active={route === "lu"} onClick={() => setRoute("lu")} />
-          <NavItem icon={<I.Lock size={15} />} label="Public Records" count={6} active={route === "pr"} onClick={() => setRoute("pr")} />
-        </NavSection>
-
-        <NavSection label="Knowledge">
           <NavItem icon={<I.Robot size={15} />} label="Validate" active={route === "ai"} onClick={() => setRoute("ai")} />
           <NavItem icon={<I.Folder size={15} />} label="Documents" active={route === "documents"} onClick={() => setRoute("documents")} />
-          <NavItem icon={<I.Graph size={15} />} label="Policy Graph" active={route === "policy"} onClick={() => setRoute("policy")} />
           <NavItem icon={<I.Library size={15} />} label="Precedents" active={route === "precedents"} onClick={() => setRoute("precedents")} />
-          <NavItem icon={<I.Database size={15} />} label="KPI Analytics" active={route === "kpi"} onClick={() => setRoute("kpi")} />
-        </NavSection>
-
-        <NavSection label="Saved views">
-          <NavItem icon={<I.Tag size={15} stroke={1.4} style={{ color: "var(--warning)" }} />} label="Breaching SLA" count={3} urgent />
-          <NavItem icon={<I.Tag size={15} stroke={1.4} style={{ color: "var(--info)" }} />} label="Awaiting acknowledgment" count={6} />
-          <NavItem icon={<I.Tag size={15} stroke={1.4} style={{ color: "var(--success)" }} />} label="My team" count={14} />
         </NavSection>
       </div>
 
