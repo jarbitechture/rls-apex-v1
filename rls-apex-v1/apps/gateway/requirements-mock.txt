@@ -4,3 +4,9 @@
 fastapi==0.115.4
 uvicorn[standard]==0.32.0
 pydantic==2.9.2
+# Corpus retrieval (pure-Python; in-process BM25 over the local corpus).
+# In production these get replaced by BM25+LightRAG+Contextual Retrieval+pgvector
+# behind the same /api/retrieve contract.
+pypdf==5.1.0
+cryptography==48.0.0
+rank-bm25==0.2.2

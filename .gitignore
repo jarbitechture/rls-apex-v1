@@ -13,6 +13,13 @@ scraps/
 **/eval/ui-simplicity/report.json
 **/eval/ui-simplicity/.last-run
 
+# Corpus — raw originals + per-file extracted text are gitignored.
+# manifest.json + index/bm25.json ARE committed (small, no PII risk for the
+# current public-record set; flip per-doc classification in manifest if a
+# privileged matter is staged).
+**/corpus/raw/
+**/corpus/extracted/
+
 # Python venvs (subdir bin/dev creates one)
 **/.venv/
 

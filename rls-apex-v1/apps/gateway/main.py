@@ -56,6 +56,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # TODO: instantiate MCP clients (one per tool, with circuit breakers)
     # TODO: configure Phoenix OTel exporter → bcc-db-llm01:6006
     # TODO: configure DSPy with SGLang base_url + model name
+    if DEV_MODE:
+        # Warm the in-process BM25 index. No-op if no corpus is staged yet.
+        try:
+            from apps.gateway.retrieval import load as _load_corpus
+            _load_corpus()
+        except Exception:
+            pass
     yield
     # TODO: graceful shutdown
 
@@ -323,7 +330,13 @@ async def _mock_query_stream(question: str) -> AsyncIterator[bytes]:
             **({"output": out_summary} if out_summary is not None else {}),
         })
 
-    for c in mock["citations"]:
+    # Prefer real corpus citations when the index is loaded; fall back to
+    # the canned mock when retrieval is empty (e.g., zero hits or no corpus).
+    real_hits = _corpus_retrieve(question, k=4,
+                                 classification_filter=["public_record", "internal"])
+    citations_to_emit = ([_citation_to_dict(c) for c in real_hits]
+                          if real_hits else mock["citations"])
+    for c in citations_to_emit:
         yield sse("citation", c)
         await asyncio.sleep(0.08)
 
@@ -334,6 +347,7 @@ async def _mock_query_stream(question: str) -> AsyncIterator[bytes]:
         "output_tokens": 110 + random.randint(-15, 20),
         "lineage_id": f"ln-mock-{random.randint(1000, 9999)}",
         "intent": mock["intent"],
+        "citations_source": "corpus" if real_hits else "canned",
     })
 
 
@@ -532,6 +546,58 @@ if DEV_MODE:
         return {"items": _mock.COMPLIANCE_PULSE}
 
 
+# ─── Corpus retrieval (real BM25 over corpus/raw/) ────────────────
+# The /api/retrieve contract is the same surface production swaps to
+# BM25+LightRAG+Contextual Retrieval+pgvector. Everything that calls
+# retrieve() (agent dispatcher below, /api/query, future DSPy chains)
+# stays unchanged at swap time.
+
+try:
+    from apps.gateway.retrieval import retrieve as _corpus_retrieve, manifest as _corpus_manifest
+    _RETRIEVAL_OK = True
+except Exception:
+    _RETRIEVAL_OK = False
+
+    def _corpus_retrieve(*args, **kwargs):
+        return []
+
+    def _corpus_manifest():
+        return {"loaded": False, "documents": [], "total_chunks": 0}
+
+
+def _citation_to_dict(c) -> dict:
+    return {
+        "id": c.id,
+        "source": c.source,
+        "source_kind": c.source_kind,
+        "pinpoint": c.pinpoint,
+        "excerpt": c.excerpt,
+        "score": c.score,
+    }
+
+
+@app.post("/api/retrieve", tags=["agent"])
+async def api_retrieve(request: Request, user: dict = Depends(current_user)) -> dict:
+    """Body: {q, k=12, classification_filter?: ["public_record","internal","privileged"]}
+    Returns: {items: [Citation], total: int, intent: str}.
+    Production: same shape, BM25+LightRAG+Contextual Retrieval+pgvector behind it.
+    """
+    body = await request.json()
+    q = (body.get("q") or "").strip()
+    k = int(body.get("k") or 12)
+    cf = body.get("classification_filter")
+    hits = _corpus_retrieve(q, k=k, classification_filter=cf)
+    pick_intent = _pick_mock(q or "general procurement").get("intent", "general")
+    return {"items": [_citation_to_dict(c) for c in hits], "total": len(hits), "intent": pick_intent}
+
+
+@app.get("/api/corpus", tags=["agent"])
+async def api_corpus() -> dict:
+    """Manifest of ingested documents — id, source, source_kind, classification,
+    pages, chunks, hash. Drives the 'corpus health' surface in the UI."""
+    return _corpus_manifest()
+
+
 # ─── Agent dispatcher (DEV_MODE) ──────────────────────────────────
 # Every UI action — Submit, Accept, Reject, Triage, Precedent search, etc. —
 # goes through one endpoint that streams an SSE response with a step trace,
@@ -642,7 +708,11 @@ async def agent_dispatch(request: Request, user: dict = Depends(current_user)) -
             yield sse("step", {"name": name, "status": "done", "t_ms": t_end})
 
         if kind in ("precedent", "draft", "triage"):
-            for c in pick["citations"]:
+            real_hits = _corpus_retrieve(seed_q, k=4,
+                                         classification_filter=["public_record", "internal"])
+            citations_to_emit = ([_citation_to_dict(c) for c in real_hits]
+                                  if real_hits else pick["citations"])
+            for c in citations_to_emit:
                 yield sse("citation", c)
                 await asyncio.sleep(0.06)
 

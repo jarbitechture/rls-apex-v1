@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# bin/ingest — extract text from corpus/raw/* and (re)build the BM25 index.
+# Run after dropping new docs into corpus/raw/.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ -d .venv ]] || { echo "[ingest] no .venv — run bin/dev once to bootstrap"; exit 1; }
+export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+exec ./.venv/bin/python -m apps.gateway.retrieval.ingest
