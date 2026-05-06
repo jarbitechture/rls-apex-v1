@@ -126,9 +126,18 @@ def _extract_csv(path: Path) -> tuple[str, int]:
     return (out.getvalue(), len(rows))
 
 
+def _extract_md(path: Path) -> tuple[str, int]:
+    """Markdown / plain-text → text. Returns (text, line_count)."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return (text, max(1, len(text.splitlines())))
+
+
 _EXTRACTORS: dict[str, Callable[[Path], tuple[str, int]]] = {
     ".pdf": _extract_pdf,
     ".csv": _extract_csv,
+    ".md": _extract_md,
+    ".markdown": _extract_md,
+    ".txt": _extract_md,
 }
 
 

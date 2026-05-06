@@ -9,8 +9,8 @@ export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
 
 ./.venv/bin/python -m apps.gateway.retrieval.ingest
 
-# Best-effort hot-reload of a running gateway.
-PORT="${PORT:-8080}"
+# Best-effort hot-reload of a running gateway. Try common dev ports.
+PORT="${PORT:-8090}"
 ./.venv/bin/python - <<PY 2>/dev/null || true
 import urllib.request, json
 try:

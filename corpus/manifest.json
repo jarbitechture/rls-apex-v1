@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "ingested_at": "2026-05-06T13:45:39Z",
+  "ingested_at": "2026-05-06T17:56:54Z",
   "documents": [
     {
       "id": "doc-aa9195f2",
@@ -13,14 +13,304 @@
       "hash": "sha256:aa9195f25d38db2252dc927f70012a626bb088b8bd6d112d79d383c51a66d1df"
     },
     {
-      "id": "doc-f6db9e42",
-      "source": "code-enforcement-checklist.pdf",
-      "source_kind": "checklist",
+      "id": "doc-f22a56ba",
+      "source": "federal-ai-bill-of-rights-2022.pdf",
+      "source_kind": "framework",
       "classification": "public_record",
-      "pages": 2,
-      "chunks": 2,
-      "bytes": 225420,
-      "hash": "sha256:f6db9e42f4e868fd5f8a71c587eaaa67ed26eab27e24788448ae030a2c0e8e11"
+      "pages": 11,
+      "chunks": 10,
+      "bytes": 17651,
+      "hash": "sha256:f22a56ba9f1280c2f940539c738b208c778e4adb2e55c338af59102f740fe887"
+    },
+    {
+      "id": "doc-3dc6e087",
+      "source": "federal-eo-national-ai-policy-2025.pdf",
+      "source_kind": "framework",
+      "classification": "public_record",
+      "pages": 3,
+      "chunks": 3,
+      "bytes": 50072,
+      "hash": "sha256:3dc6e0876c6628f677af408f31760659ae981839084776ea7df57f6839acb5bc"
+    },
+    {
+      "id": "doc-15e93965",
+      "source": "federal-nat-academies-5-strategies-2025.pdf",
+      "source_kind": "framework",
+      "classification": "public_record",
+      "pages": 13,
+      "chunks": 13,
+      "bytes": 22551,
+      "hash": "sha256:15e939655c5781ab5093d14fccd687d91c0694031d77e4a71255c96e3ac8af25"
+    },
+    {
+      "id": "doc-c4748ee1",
+      "source": "federal-nist-ai-rmf-2023.pdf",
+      "source_kind": "framework",
+      "classification": "public_record",
+      "pages": 12,
+      "chunks": 11,
+      "bytes": 19447,
+      "hash": "sha256:c4748ee1cf2f7d41f42f30a8ee245dac2535a505c2113dc61a730848a824dae5"
+    },
+    {
+      "id": "doc-60a42cad",
+      "source": "federal-va-ai-workforce-blueprint-2024.pdf",
+      "source_kind": "framework",
+      "classification": "public_record",
+      "pages": 72,
+      "chunks": 71,
+      "bytes": 10288685,
+      "hash": "sha256:60a42cad1ca0013e0484d0dc0a2ded12dc61f8565a5284a1adda221834ec6bf1"
+    },
+    {
+      "id": "doc-f8b621a3",
+      "source": "govai-aia-template.txt",
+      "source_kind": "template",
+      "classification": "public_record",
+      "pages": 134,
+      "chunks": 7,
+      "bytes": 8717,
+      "hash": "sha256:f8b621a36e63aad08d0eee56e581f0c31645a515b615a9d901c210d8e20326e1"
+    },
+    {
+      "id": "doc-4a4612e4",
+      "source": "govai-coalition-complete-templates.pdf",
+      "source_kind": "template",
+      "classification": "public_record",
+      "pages": 11,
+      "chunks": 10,
+      "bytes": 21643,
+      "hash": "sha256:4a4612e4be5e56f100f8aab9f238986d649796357717c25b69a0781120b231fd"
+    },
+    {
+      "id": "doc-cbcffe4c",
+      "source": "govai-imp1-handbook-template.pdf",
+      "source_kind": "template",
+      "classification": "public_record",
+      "pages": 29,
+      "chunks": 29,
+      "bytes": 748823,
+      "hash": "sha256:cbcffe4cd1bf74cdf05b7c7287acc501e8bc268c547ebebfaad3025e69e9c305"
+    },
+    {
+      "id": "doc-3c524118",
+      "source": "govai-imp2-vendor-factsheet.pdf",
+      "source_kind": "template",
+      "classification": "public_record",
+      "pages": 3,
+      "chunks": 3,
+      "bytes": 232545,
+      "hash": "sha256:3c52411831c3ed868d4acc0d7c7d7e6105529d5341c83bc1e87aa44e7c397807"
+    },
+    {
+      "id": "doc-9854a5b2",
+      "source": "govai-imp3-measuring-performance.pdf",
+      "source_kind": "template",
+      "classification": "public_record",
+      "pages": 11,
+      "chunks": 11,
+      "bytes": 2544728,
+      "hash": "sha256:9854a5b291bbadc94782eeee57a7c551bf573fa6004460994ca66076cb96638c"
+    },
+    {
+      "id": "doc-04beec68",
+      "source": "industry-model-ai-policy-local-gov.txt",
+      "source_kind": "industry_ref",
+      "classification": "public_record",
+      "pages": 304,
+      "chunks": 22,
+      "bytes": 15360,
+      "hash": "sha256:04beec688122d3e2ad9fc7c212bfbcaebf918356c5370c7185c3c4988c630246"
+    },
+    {
+      "id": "doc-8569e5e7",
+      "source": "industry-naco-tech-pp-5-2024.pdf",
+      "source_kind": "industry_ref",
+      "classification": "public_record",
+      "pages": 5,
+      "chunks": 5,
+      "bytes": 306427,
+      "hash": "sha256:8569e5e79074797c9a428eee3a7523276278175fe981956270205ac72d37291f"
+    },
+    {
+      "id": "doc-d208d9ee",
+      "source": "industry-oecd-governing-with-ai-2025.pdf",
+      "source_kind": "industry_ref",
+      "classification": "public_record",
+      "pages": 306,
+      "chunks": 300,
+      "bytes": 5581859,
+      "hash": "sha256:d208d9eed5b435750edc07cb8c6146220b97a7e65e63c78869ab44c24a429808"
+    },
+    {
+      "id": "doc-0be49586",
+      "source": "manatee-ai-001-policy-v2.pdf",
+      "source_kind": "policy",
+      "classification": "public_record",
+      "pages": 8,
+      "chunks": 8,
+      "bytes": 51491,
+      "hash": "sha256:0be495863354af4bf81384ba9cd080b5f27d54182f051c09b0d37e7fd3ad9547"
+    },
+    {
+      "id": "doc-3fb670b7",
+      "source": "manatee-ai-handbook-v2-edited.pdf",
+      "source_kind": "handbook",
+      "classification": "public_record",
+      "pages": 31,
+      "chunks": 31,
+      "bytes": 25517416,
+      "hash": "sha256:3fb670b70bd2edebd7a61ace739c1f82949193f573a1b087db19cc0456c684d5"
+    },
+    {
+      "id": "doc-0e2c5887",
+      "source": "manatee-ai-readiness-assessment-2026.txt",
+      "source_kind": "assessment",
+      "classification": "internal",
+      "pages": 340,
+      "chunks": 12,
+      "bytes": 22823,
+      "hash": "sha256:0e2c5887456766fea7907d1705a4fb6941295e182f75fdc93ac4e534e3deb75f"
+    },
+    {
+      "id": "doc-cac5e0eb",
+      "source": "manatee-algorithmic-impact-assessment-v2-1.pdf",
+      "source_kind": "form",
+      "classification": "public_record",
+      "pages": 7,
+      "chunks": 7,
+      "bytes": 97033,
+      "hash": "sha256:cac5e0eb4127715fa71709dc426752805877fc9e7c889b5177bf5c3d7a2b2cb5"
+    },
+    {
+      "id": "doc-5a9924d7",
+      "source": "manatee-genai-guidelines-v2.pdf",
+      "source_kind": "guidelines",
+      "classification": "public_record",
+      "pages": 29,
+      "chunks": 28,
+      "bytes": 145233,
+      "hash": "sha256:5a9924d719646d41bc0bdc0c203c299035d8b026ea341015d1df01c3df82a13e"
+    },
+    {
+      "id": "doc-4f1cde40",
+      "source": "manatee-golden-record-analysis.md",
+      "source_kind": "analysis",
+      "classification": "internal",
+      "pages": 497,
+      "chunks": 35,
+      "bytes": 25759,
+      "hash": "sha256:4f1cde40a3e78c751527b8b767ff9559bf3e56a0c539fc53131dbab8238169de"
+    },
+    {
+      "id": "doc-dd9069cb",
+      "source": "manatee-it-policy-draft.md",
+      "source_kind": "policy_draft",
+      "classification": "internal",
+      "pages": 320,
+      "chunks": 66,
+      "bytes": 35054,
+      "hash": "sha256:dd9069cbc8372df9c3a80b9a6c6beed6953c16b992ff875de2cbc586ea9fea25"
+    },
+    {
+      "id": "doc-c94e079f",
+      "source": "manatee-n-artificial-intelligence.md",
+      "source_kind": "policy_draft",
+      "classification": "internal",
+      "pages": 40,
+      "chunks": 3,
+      "bytes": 3040,
+      "hash": "sha256:c94e079f5acd6316b8e583873fb9888653b5a8c123b07882e70344c2bed85e83"
+    },
+    {
+      "id": "doc-d30b1c8d",
+      "source": "manatee-prompt-library-meeting-script.md",
+      "source_kind": "meeting_notes",
+      "classification": "internal",
+      "pages": 583,
+      "chunks": 19,
+      "bytes": 15139,
+      "hash": "sha256:d30b1c8d0e56b439e9aa28fa3e9f35edabaf4741b49a0e822d82c71df7810fd6"
+    },
+    {
+      "id": "doc-3668bf22",
+      "source": "manatee-prompt-operations-plan-2026.md",
+      "source_kind": "ops_plan",
+      "classification": "internal",
+      "pages": 1009,
+      "chunks": 39,
+      "bytes": 30430,
+      "hash": "sha256:3668bf22a36c943afd255008377c7d5a17a3e1114ab7bda96d5178452760f2bb"
+    },
+    {
+      "id": "doc-529920f2",
+      "source": "manatee-roi-hallucination-audit-2026.md",
+      "source_kind": "audit",
+      "classification": "internal",
+      "pages": 824,
+      "chunks": 37,
+      "bytes": 26852,
+      "hash": "sha256:529920f215d1d96dabea231ad72d80c295570091186ccd584e783ca60dd914fc"
+    },
+    {
+      "id": "doc-74c894b5",
+      "source": "model-miami-dade-1st-report-2024.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 22,
+      "chunks": 22,
+      "bytes": 1291350,
+      "hash": "sha256:74c894b5000db5f7daa04a7831d8536a52e6eb468d09d8a09c2c9013c2ba61cd"
+    },
+    {
+      "id": "doc-01bf284a",
+      "source": "model-miami-dade-2nd-report-2025.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 21,
+      "chunks": 21,
+      "bytes": 2271025,
+      "hash": "sha256:01bf284aa5684d02c69913749569ca4c4d9200effdecff0b439343fb3bef9162"
+    },
+    {
+      "id": "doc-f17838a1",
+      "source": "model-san-jose-digital-privacy-2020.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 5,
+      "chunks": 5,
+      "bytes": 242303,
+      "hash": "sha256:f17838a1edd595fa58230eb867f5a5697d9a6ee9d156f4f1c9ee9da0c936525e"
+    },
+    {
+      "id": "doc-b8fb8d6f",
+      "source": "model-san-jose-genai-guidelines-2025.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 33,
+      "chunks": 33,
+      "bytes": 1415153,
+      "hash": "sha256:b8fb8d6fce9943c3856b232d4c976c4ed9c480dc86f5583dacf81fbb126a1b21"
+    },
+    {
+      "id": "doc-f3176d70",
+      "source": "model-san-jose-handbook-2024.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 28,
+      "chunks": 28,
+      "bytes": 496022,
+      "hash": "sha256:f3176d70b00b6f756ce90783f645ee35733e263e61be9fdf069b5ead056d0539"
+    },
+    {
+      "id": "doc-cdcba263",
+      "source": "model-san-jose-incident-response-2024.pdf",
+      "source_kind": "model_policy",
+      "classification": "public_record",
+      "pages": 10,
+      "chunks": 10,
+      "bytes": 268282,
+      "hash": "sha256:cdcba263c05b5b49828df759cc587e96a24266b632cbb6fe14c6b31367f576bf"
     },
     {
       "id": "doc-dd72c854",
