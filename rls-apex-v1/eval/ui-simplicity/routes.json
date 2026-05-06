@@ -1,0 +1,8 @@
+[
+  { "route": "dashboard",   "label": "Dashboard" },
+  { "route": "submissions", "label": "Submissions" },
+  { "route": "inbox",       "label": "Inbox" },
+  { "route": "drafts",      "label": "Drafts" },
+  { "route": "kpi",         "label": "KPI Analytics" },
+  { "route": "ai",          "label": "AI Co-pilot" }
+]

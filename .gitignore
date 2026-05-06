@@ -6,8 +6,15 @@ scraps/
 *.napkin
 
 # stray uploads excluded from public repo
-uploads/Untitled*.pdf
-uploads/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].pdf
+**/uploads/Untitled*.pdf
+**/uploads/*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].pdf
+
+# UI simplicity per-run output (baseline.json IS committed; report.json isn't)
+**/eval/ui-simplicity/report.json
+**/eval/ui-simplicity/.last-run
+
+# Python venvs (subdir bin/dev creates one)
+**/.venv/
 
 # env / secrets (defense-in-depth; subdir .gitignore also covers)
 .env

@@ -14,6 +14,15 @@ function App() {
   const [route, setRoute] = React.useState("dashboard");
   const [detailId, setDetailId] = React.useState(null);
 
+  // Dev hook: expose route setter only when explicitly running UI-simplicity
+  // checks (Playwright sets window.__RLS_TEST; users can also pass
+  // ?ui_simplicity=1). No-op in prod.
+  React.useEffect(() => {
+    if (window.__RLS_TEST || /\bui_simplicity=1\b/.test(window.location.search)) {
+      window.__RLS_ROUTE_SET = setRoute;
+    }
+  }, [setRoute]);
+
   React.useEffect(() => {
     document.body.dataset.sidebar = tweaks.sidebar;
     document.body.dataset.card = tweaks.card;

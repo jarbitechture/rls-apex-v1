@@ -1,0 +1,13 @@
+{
+  "name": "rls-apex-v1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Manatee County BCC — Request for Legal Services pilot scaffold",
+  "scripts": {
+    "ui-check":    "node eval/ui-simplicity/check.mjs",
+    "ui-baseline": "node eval/ui-simplicity/check.mjs --baseline"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
