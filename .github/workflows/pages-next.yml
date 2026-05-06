@@ -1,0 +1,68 @@
+name: Deploy Pages (Next.js)
+
+# Builds apps/web-next/ as a static export and uploads `out/` as the
+# Pages artifact. Path-filter only triggers on files that affect the
+# Next.js build, so it doesn't fight the legacy `pages.yml` for runs.
+#
+# To cut over: disable `pages.yml` (rename to .yml.disabled or delete)
+# once Session 2 parity is verified.
+
+on:
+  push:
+    branches: [main, next-migration]
+    paths:
+      - "apps/web-next/**"
+      - ".github/workflows/pages-next.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-next
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web-next
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web-next/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (static export)
+        run: npm run build
+        env:
+          # GITHUB_ACTIONS=true is set automatically; next.config.ts reads
+          # it to apply basePath=/rls-apex-v1 only on CI.
+          NODE_ENV: production
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web-next/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4
