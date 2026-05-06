@@ -5,7 +5,9 @@
   "description": "Manatee County BCC — Request for Legal Services pilot scaffold",
   "scripts": {
     "ui-check":    "node eval/ui-simplicity/check.mjs",
-    "ui-baseline": "node eval/ui-simplicity/check.mjs --baseline"
+    "ui-baseline": "node eval/ui-simplicity/check.mjs --baseline",
+    "regress":     "node eval/regressions/api.mjs",
+    "verify":      "node eval/ui-simplicity/verify-clicks.mjs && node eval/ui-simplicity/verify-bugfixes.mjs && node eval/regressions/api.mjs && node eval/ui-simplicity/check.mjs"
   },
   "devDependencies": {
     "playwright": "^1.49.0"
