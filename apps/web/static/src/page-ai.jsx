@@ -99,12 +99,12 @@ function CurePath({ items, citations }) {
               fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center",
             }}>{i + 1}</div>
             <div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.4 }}>{it.title}</div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 4, lineHeight: 1.55 }}>{it.detail}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)", lineHeight: 1.4 }}>{it.title}</div>
+              <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4, lineHeight: 1.55 }}>{it.detail}</div>
               {it.citation_id && (
                 <div style={{ marginTop: 6 }}>
                   <span className="mono" style={{ fontSize: 11, color: "var(--primary)", fontWeight: 600 }}>{it.citation_id}</span>
-                  {cmap[it.citation_id]?.pinpoint && <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", marginLeft: 6 }}>· {cmap[it.citation_id].pinpoint}</span>}
+                  {cmap[it.citation_id]?.pinpoint && <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 6 }}>· {cmap[it.citation_id].pinpoint}</span>}
                 </div>
               )}
             </div>
@@ -115,7 +115,10 @@ function CurePath({ items, citations }) {
   );
 }
 
-function CitationCard({ c }) {
+// Memoized — the parent re-renders on every token; without React.memo each
+// citation card would re-render too. Equality on Citation.id is enough since
+// the shape is immutable per id.
+const CitationCard = React.memo(function CitationCard({ c }) {
   return (
     <div style={{
       background: "var(--canvas)", border: "1px solid var(--border)",
@@ -123,12 +126,12 @@ function CitationCard({ c }) {
     }}>
       <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
         <span className="mono" style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>{c.id}</span>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{c.source_kind} · {c.pinpoint}</span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{c.source_kind} · {c.pinpoint}</span>
       </div>
       <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 5, lineHeight: 1.55 }}>{c.excerpt}</div>
     </div>
   );
-}
+}, (prev, next) => prev.c.id === next.c.id);
 
 const SAMPLE_DRAFTS = [
   "Can the County contract a sole-source IT vendor under §125.65 if findings are drafted concurrently?",
@@ -237,7 +240,7 @@ const AiPage = ({ go }) => {
               {SAMPLE_DRAFTS.map(s => (
                 <button key={s} onClick={() => setDraft(s)} style={{
                   border: "1px solid var(--border)", background: "var(--canvas)",
-                  padding: "4px 10px", borderRadius: 999, fontSize: 11.5,
+                  padding: "4px 10px", borderRadius: 999, fontSize: 12,
                   color: "var(--ink-2)", cursor: "pointer",
                 }}>{s.length > 64 ? s.slice(0, 61) + "…" : s}</button>
               ))}

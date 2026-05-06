@@ -1,6 +1,6 @@
 {
   "dashboard": {
-    "score": 95,
+    "score": 97,
     "severity": "info",
     "issues": [
       {
@@ -10,68 +10,51 @@
         "cap": 8,
         "penalty": 3,
         "detail": "9 vs cap of 8"
-      },
-      {
-        "key": "colors",
-        "label": "Distinct text colors",
-        "count": 19,
-        "cap": 18,
-        "penalty": 2,
-        "detail": "19 vs cap of 18"
       }
     ],
     "counts": {
-      "interactiveAboveFold": 23,
+      "interactiveAboveFold": 11,
       "fontSizes": 9,
-      "colors": 19,
-      "panels": 1,
-      "kpiCards": 0,
-      "aiWidgets": 1,
-      "density": 0.018
-    },
-    "label": "Dashboard",
-    "delta": 79
-  },
-  "submissions": {
-    "score": 79,
-    "severity": "warn",
-    "issues": [
-      {
-        "key": "interactiveAboveFold",
-        "label": "Interactive above fold",
-        "count": 39,
-        "cap": 25,
-        "penalty": 21,
-        "detail": "39 vs cap of 25"
-      }
-    ],
-    "counts": {
-      "interactiveAboveFold": 39,
-      "fontSizes": 8,
       "colors": 17,
       "panels": 1,
       "kpiCards": 0,
       "aiWidgets": 1,
-      "density": 0.03
+      "density": 0.008
+    },
+    "label": "Dashboard",
+    "delta": 2
+  },
+  "submissions": {
+    "score": 100,
+    "severity": "info",
+    "issues": [],
+    "counts": {
+      "interactiveAboveFold": 3,
+      "fontSizes": 6,
+      "colors": 4,
+      "panels": 1,
+      "kpiCards": 0,
+      "aiWidgets": 1,
+      "density": 0.002
     },
     "label": "Submissions",
-    "delta": 79
+    "delta": 21
   },
   "inbox": {
     "score": 100,
     "severity": "info",
     "issues": [],
     "counts": {
-      "interactiveAboveFold": 25,
+      "interactiveAboveFold": 13,
       "fontSizes": 8,
-      "colors": 14,
+      "colors": 11,
       "panels": 1,
       "kpiCards": 0,
       "aiWidgets": 1,
-      "density": 0.019
+      "density": 0.01
     },
     "label": "Inbox",
-    "delta": 66
+    "delta": 0
   },
   "drafts": {
     "score": 97,
@@ -87,16 +70,16 @@
       }
     ],
     "counts": {
-      "interactiveAboveFold": 23,
+      "interactiveAboveFold": 12,
       "fontSizes": 9,
-      "colors": 14,
+      "colors": 11,
       "panels": 1,
       "kpiCards": 0,
       "aiWidgets": 1,
-      "density": 0.018
+      "density": 0.009
     },
     "label": "Drafts",
-    "delta": 63
+    "delta": 0
   },
   "kpi": {
     "score": 94,
@@ -112,40 +95,31 @@
       }
     ],
     "counts": {
-      "interactiveAboveFold": 22,
+      "interactiveAboveFold": 10,
       "fontSizes": 10,
-      "colors": 13,
+      "colors": 10,
       "panels": 1,
       "kpiCards": 0,
       "aiWidgets": 1,
-      "density": 0.017
+      "density": 0.008
     },
     "label": "KPI Analytics",
-    "delta": 62
+    "delta": 0
   },
   "ai": {
-    "score": 73,
-    "severity": "warn",
-    "issues": [
-      {
-        "key": "interactiveAboveFold",
-        "label": "Interactive above fold",
-        "count": 43,
-        "cap": 25,
-        "penalty": 27,
-        "detail": "43 vs cap of 25"
-      }
-    ],
+    "score": 100,
+    "severity": "info",
+    "issues": [],
     "counts": {
-      "interactiveAboveFold": 43,
+      "interactiveAboveFold": 14,
       "fontSizes": 8,
-      "colors": 17,
+      "colors": 10,
       "panels": 1,
       "kpiCards": 0,
       "aiWidgets": 1,
-      "density": 0.033
+      "density": 0.011
     },
     "label": "AI Co-pilot",
-    "delta": 73
+    "delta": 27
   }
 }

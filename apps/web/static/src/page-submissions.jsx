@@ -72,18 +72,30 @@ const Cell = ({ children, w, align = "left", style, mono }) => (
 );
 
 const Submissions = ({ go, lens }) => {
-  // SAMPLE.submissions is the first-paint fallback; live data from the
-  // gateway lands in `items` once /api/rls resolves. On Pages (no
-  // gateway) the component stays on SAMPLE — fetch fails silently.
-  const [items, setItems] = React.useState(SAMPLE.submissions);
+  // Skeleton-then-replace: render with `items=null` until the fetch
+  // resolves, then replace with live data in one shot. Eliminates the
+  // SAMPLE -> setState flicker. On Pages (no gateway) we fall back to
+  // SAMPLE so the static demo still has content.
+  const [items, setItems] = React.useState(null);
   React.useEffect(() => {
-    if (!window.RLS_API) return;
+    if (!window.RLS_API) { setItems(SAMPLE.submissions); return; }
     let alive = true;
     window.RLS_API.rls.list()
-      .then(r => { if (alive && r && r.items) setItems(r.items); })
-      .catch(() => {});
+      .then(r => { if (alive) setItems(r && r.items ? r.items : SAMPLE.submissions); })
+      .catch(() => { if (alive) setItems(SAMPLE.submissions); });
     return () => { alive = false; };
   }, []);
+
+  if (items === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", padding: 24 }}>
+        <div style={{ height: 24, width: 200, background: "var(--muted-2)", borderRadius: 4, marginBottom: 16 }} />
+        {[...Array(6)].map((_, i) => (
+          <div key={i} style={{ height: 36, background: "var(--muted-2)", borderRadius: 4, marginBottom: 6, opacity: 1 - (i * 0.12) }} />
+        ))}
+      </div>
+    );
+  }
 
   const [q, setQ] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
