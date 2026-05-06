@@ -287,79 +287,137 @@ const CodeEnforcement = ({ go }) => {
 };
 
 // ── Policy Graph ─────────────────────────────────────────────────
-const Policy = () => (
-  <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-    <PageHeader title="Policy Graph" sub="Statutes, code sections, and prior opinions linked by citation"
-      right={<><Btn variant="default" size="sm" icon={<I.Filter size={13} />}>Filter</Btn><Btn variant="default" size="sm" icon={<I.Search size={13} />}>Search nodes</Btn></>} />
-    <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", overflow: "hidden" }}>
-      <div style={{ position: "relative", overflow: "hidden", background: "color-mix(in oklab, var(--muted) 30%, white)" }}>
-        <svg width="100%" height="100%" viewBox="0 0 800 600" style={{ display: "block" }}>
-          {/* edges */}
-          {[
-            ["str","preempt"],["str","homerule"],["str","bie"],["preempt","burns"],["preempt","phantom"],
-            ["bie","posting"],["str","prior1"],["prior1","preempt"],["homerule","prior2"],["bie","prior3"],
-            ["str","prior2"],
-          ].map(([a,b], i) => {
-            const nodes = {
-              str: [400, 300], preempt: [580, 220], homerule: [240, 220], bie: [420, 460],
-              burns: [700, 160], phantom: [700, 280], posting: [560, 540],
-              prior1: [520, 380], prior2: [220, 380], prior3: [320, 540],
-            };
-            const [x1,y1] = nodes[a], [x2,y2] = nodes[b];
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="2 3" />;
-          })}
-          {[
-            { id: "str", x: 400, y: 300, r: 36, label: "§125.66(3)(c)", sub: "BIE rule", primary: true },
-            { id: "preempt", x: 580, y: 220, r: 28, label: "§163.31801", sub: "Preemption", color: "var(--warning)" },
-            { id: "homerule", x: 240, y: 220, r: 28, label: "§166.041", sub: "Home rule" },
-            { id: "bie", x: 420, y: 460, r: 26, label: "BIE Worksheet", sub: "Form" },
-            { id: "burns", x: 700, y: 160, r: 22, label: "Burns v. PBC", sub: "Case" },
-            { id: "phantom", x: 700, y: 280, r: 22, label: "Phantom Touring", sub: "Case" },
-            { id: "posting", x: 560, y: 540, r: 20, label: "Posting", sub: "Process" },
-            { id: "prior1", x: 520, y: 380, r: 18, label: "RLS-25-0098", sub: "STR opinion" },
-            { id: "prior2", x: 220, y: 380, r: 18, label: "RLS-25-0042", sub: "Permit fee" },
-            { id: "prior3", x: 320, y: 540, r: 18, label: "RLS-24-0119", sub: "BIE prec." },
-          ].map(n => (
-            <g key={n.id} style={{ cursor: "pointer" }}>
-              <circle cx={n.x} cy={n.y} r={n.r}
-                fill={n.primary ? "var(--primary)" : n.color || "var(--canvas)"}
-                stroke={n.primary ? "var(--primary)" : n.color || "var(--border-strong)"}
-                strokeWidth={n.primary ? 2 : 1.5} />
-              <text x={n.x} y={n.y - 2} textAnchor="middle" fontSize={n.r > 25 ? 11 : 10} fontWeight="600"
-                fill={n.primary ? "white" : "var(--ink)"} fontFamily="var(--mono)">{n.label}</text>
-              <text x={n.x} y={n.y + 11} textAnchor="middle" fontSize="9"
-                fill={n.primary ? "rgba(255,255,255,0.85)" : "var(--ink-3)"}>{n.sub}</text>
-            </g>
-          ))}
-        </svg>
-      </div>
-      <div style={{ borderLeft: "1px solid var(--border)", overflowY: "auto", padding: 14 }}>
-        <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>SELECTED</div>
-        <div className="serif" style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Fla. Stat. §125.66(3)(c)</div>
-        <Pill tone="primary" dot>Statute</Pill>
-        <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-2)", marginTop: 12 }}>
-          Establishes the Business Impact Estimate requirement for proposed county ordinances. The County must prepare a BIE before any ordinance is adopted, post it 14 days prior to the adoption hearing, and address direct/indirect costs and alternatives.
-        </p>
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-3)", marginBottom: 8 }}>Connections (11)</div>
-          {[
-            { k: "Fla. Stat. §163.31801", t: "preempts", color: "var(--warning)" },
-            { k: "Fla. Stat. §166.041", t: "parallels", color: "var(--ink-3)" },
-            { k: "BIE Worksheet form", t: "implements", color: "var(--primary)" },
-            { k: "RLS-25-0098", t: "applied in", color: "var(--info)" },
-            { k: "RLS-25-0042", t: "discussed in", color: "var(--info)" },
-            { k: "Burns v. Palm Beach Cty.", t: "rationale", color: "var(--ink-3)" },
-          ].map(c => (
-            <div key={c.k} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, padding: "5px 0", borderBottom: "1px dashed var(--border)", fontSize: 11.5, alignItems: "center" }}>
-              <Pill tone="ghost" style={{ background: c.color, color: "white", padding: "1px 6px", fontSize: 9.5 }}>{c.t}</Pill>
-              <span className="mono" style={{ color: "var(--ink-2)" }}>{c.k}</span>
-            </div>
-          ))}
+const POLICY_NODES = [
+  { id: "str",      x: 400, y: 300, r: 36, label: "§125.66(3)(c)",    sub: "BIE rule",       primary: true,
+    kind: "Statute", title: "Fla. Stat. §125.66(3)(c)",
+    desc: "Establishes the Business Impact Estimate requirement for proposed county ordinances. The County must prepare a BIE before any ordinance is adopted, post it 14 days prior to the adoption hearing, and address direct/indirect costs and alternatives.",
+    edges: [
+      { k: "Fla. Stat. §163.31801",   t: "preempts",     color: "var(--warning)" },
+      { k: "Fla. Stat. §166.041",     t: "parallels",    color: "var(--ink-3)" },
+      { k: "BIE Worksheet form",      t: "implements",   color: "var(--primary)" },
+      { k: "RLS-25-0098",             t: "applied in",   color: "var(--info)" },
+      { k: "RLS-25-0042",             t: "discussed in", color: "var(--info)" },
+      { k: "Burns v. Palm Beach Cty.", t: "rationale",   color: "var(--ink-3)" },
+    ] },
+  { id: "preempt",  x: 580, y: 220, r: 28, label: "§163.31801",        sub: "Preemption", color: "var(--warning)",
+    kind: "Statute", title: "Fla. Stat. §163.31801",
+    desc: "State preemption of local short-term rental regulation. Limits county authority to regulate vacation rentals beyond what existed pre-2011 unless grandfathered or narrowly tailored.",
+    edges: [
+      { k: "Burns v. Palm Beach Cty.",   t: "applied",     color: "var(--ink-3)" },
+      { k: "Phantom Touring v. Stamford", t: "rationale",  color: "var(--ink-3)" },
+      { k: "RLS-25-0098",                t: "considered",  color: "var(--info)" },
+    ] },
+  { id: "homerule", x: 240, y: 220, r: 28, label: "§166.041",          sub: "Home rule",
+    kind: "Statute", title: "Fla. Stat. §166.041",
+    desc: "Procedures for adoption of municipal/county ordinances. Notice, posting, and public hearing requirements that run parallel to §125.66 for ordinance enactment.",
+    edges: [
+      { k: "Fla. Stat. §125.66",  t: "parallels",  color: "var(--ink-3)" },
+      { k: "RLS-25-0042",         t: "applied in", color: "var(--info)" },
+    ] },
+  { id: "bie",      x: 420, y: 460, r: 26, label: "BIE Worksheet",     sub: "Form",
+    kind: "Form", title: "BIE Worksheet",
+    desc: "Standard worksheet completed before an ordinance is adopted: direct costs, indirect costs, alternatives, and small-business impact. Posted 14 days prior to adoption.",
+    edges: [
+      { k: "Fla. Stat. §125.66(3)(c)", t: "required by", color: "var(--primary)" },
+      { k: "Posting (14 days)",        t: "feeds into",  color: "var(--ink-3)" },
+      { k: "RLS-24-0119",              t: "exemplifies", color: "var(--info)" },
+    ] },
+  { id: "burns",    x: 700, y: 160, r: 22, label: "Burns v. PBC",      sub: "Case",
+    kind: "Case", title: "Burns v. Palm Beach County",
+    desc: "Florida appellate case applying §163.31801 to invalidate a local short-term-rental moratorium. Cited when assessing preemption risk for STR ordinances.",
+    edges: [{ k: "Fla. Stat. §163.31801", t: "applied", color: "var(--warning)" }] },
+  { id: "phantom",  x: 700, y: 280, r: 22, label: "Phantom Touring",   sub: "Case",
+    kind: "Case", title: "Phantom Touring v. Stamford",
+    desc: "Out-of-state precedent invoked for preemption rationale. Useful as analogy when a Florida case is unavailable on point.",
+    edges: [{ k: "Fla. Stat. §163.31801", t: "rationale", color: "var(--warning)" }] },
+  { id: "posting",  x: 560, y: 540, r: 20, label: "Posting",           sub: "Process",
+    kind: "Process", title: "BIE 14-Day Posting",
+    desc: "Procedural posting window: BIE must be publicly available 14 days prior to the adoption hearing. Failure to post invalidates the ordinance.",
+    edges: [{ k: "BIE Worksheet form", t: "follows", color: "var(--primary)" }] },
+  { id: "prior1",   x: 520, y: 380, r: 18, label: "RLS-25-0098",       sub: "STR opinion",
+    kind: "Opinion", title: "RLS-25-0098 — STR zoning amendment",
+    desc: "Approved-with-revisions opinion on a proposed short-term rental zoning amendment. Cited in three follow-on RLS reviews for the BIE-and-preemption fact pattern.",
+    edges: [
+      { k: "Fla. Stat. §125.66(3)(c)", t: "applied",   color: "var(--primary)" },
+      { k: "Fla. Stat. §163.31801",    t: "considered", color: "var(--warning)" },
+    ] },
+  { id: "prior2",   x: 220, y: 380, r: 18, label: "RLS-25-0042",       sub: "Permit fee",
+    kind: "Opinion", title: "RLS-25-0042 — permit fee tiered by occupancy",
+    desc: "Approved tiered permit-fee structure tied to occupancy load. Cleared §166.041 ordinance-adoption requirements.",
+    edges: [
+      { k: "Fla. Stat. §125.66(3)(c)", t: "discussed in", color: "var(--primary)" },
+      { k: "Fla. Stat. §166.041",      t: "applied",      color: "var(--ink-3)" },
+    ] },
+  { id: "prior3",   x: 320, y: 540, r: 18, label: "RLS-24-0119",       sub: "BIE prec.",
+    kind: "Opinion", title: "RLS-24-0119 — tree canopy preservation",
+    desc: "Adopted opinion exemplifying a complete BIE for a low-controversy ordinance. Useful template for routine BIE drafting.",
+    edges: [{ k: "BIE Worksheet form", t: "exemplifies", color: "var(--primary)" }] },
+];
+
+const POLICY_EDGES = [
+  ["str","preempt"],["str","homerule"],["str","bie"],["preempt","burns"],["preempt","phantom"],
+  ["bie","posting"],["str","prior1"],["prior1","preempt"],["homerule","prior2"],["bie","prior3"],
+  ["str","prior2"],
+];
+
+const Policy = () => {
+  const [selectedId, setSelectedId] = React.useState("str");
+  const selected = POLICY_NODES.find(n => n.id === selectedId) || POLICY_NODES[0];
+  const nodeMap = Object.fromEntries(POLICY_NODES.map(n => [n.id, [n.x, n.y]]));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <PageHeader title="Policy Graph" sub={`Statutes, code sections, and prior opinions linked by citation · click any node to drill in (${POLICY_NODES.length} nodes, ${POLICY_EDGES.length} edges)`}
+        right={<><Btn variant="default" size="sm" icon={<I.Filter size={13} />}>Filter</Btn><Btn variant="default" size="sm" icon={<I.Search size={13} />}>Search nodes</Btn></>} />
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", overflow: "hidden" }}>
+        <div style={{ position: "relative", overflow: "hidden", background: "color-mix(in oklab, var(--muted) 30%, white)" }}>
+          <svg width="100%" height="100%" viewBox="0 0 800 600" style={{ display: "block" }}>
+            {POLICY_EDGES.map(([a, b], i) => {
+              const [x1, y1] = nodeMap[a], [x2, y2] = nodeMap[b];
+              const isSelected = a === selectedId || b === selectedId;
+              return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+                stroke={isSelected ? "var(--primary)" : "var(--border-strong)"}
+                strokeWidth={isSelected ? 2 : 1}
+                strokeDasharray={isSelected ? "0" : "2 3"}
+                opacity={isSelected ? 1 : 0.7} />;
+            })}
+            {POLICY_NODES.map(n => {
+              const isSel = n.id === selectedId;
+              return (
+                <g key={n.id} style={{ cursor: "pointer" }} onClick={() => setSelectedId(n.id)}
+                   data-rls-node={n.id} aria-label={`Select ${n.title}`}>
+                  <circle cx={n.x} cy={n.y} r={n.r + (isSel ? 3 : 0)}
+                    fill={n.primary ? "var(--primary)" : n.color || "var(--canvas)"}
+                    stroke={isSel ? "var(--primary)" : (n.primary ? "var(--primary)" : n.color || "var(--border-strong)")}
+                    strokeWidth={isSel ? 3 : (n.primary ? 2 : 1.5)} />
+                  <text x={n.x} y={n.y - 2} textAnchor="middle" fontSize={n.r > 25 ? 11 : 10} fontWeight="600"
+                    fill={n.primary ? "white" : "var(--ink)"} fontFamily="var(--mono)" pointerEvents="none">{n.label}</text>
+                  <text x={n.x} y={n.y + 11} textAnchor="middle" fontSize="9"
+                    fill={n.primary ? "rgba(255,255,255,0.85)" : "var(--ink-3)"} pointerEvents="none">{n.sub}</text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div style={{ borderLeft: "1px solid var(--border)", overflowY: "auto", padding: 14 }}>
+          <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 4 }}>SELECTED</div>
+          <div className="serif" style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>{selected.title}</div>
+          <Pill tone="primary" dot>{selected.kind}</Pill>
+          <p style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-2)", marginTop: 12 }}>{selected.desc}</p>
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--ink-3)", marginBottom: 8 }}>Connections ({selected.edges.length})</div>
+            {selected.edges.map(c => (
+              <div key={c.k} style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, padding: "5px 0", borderBottom: "1px dashed var(--border)", fontSize: 11.5, alignItems: "center" }}>
+                <Pill tone="ghost" style={{ background: c.color, color: "white", padding: "1px 6px", fontSize: 9.5 }}>{c.t}</Pill>
+                <span className="mono" style={{ color: "var(--ink-2)" }}>{c.k}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ── Precedents library ──────────────────────────────────────────
 const PRECEDENTS = [

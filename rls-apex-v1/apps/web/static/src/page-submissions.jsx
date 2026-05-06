@@ -71,22 +71,29 @@ const Cell = ({ children, w, align = "left", style, mono }) => (
   }}>{children}</div>
 );
 
-const Submissions = ({ go }) => {
+const Submissions = ({ go, lens }) => {
   const [q, setQ] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
-  const filtered = SAMPLE.submissions.filter(s => {
+  // `lens` lets parent routes scope the same Submissions list to a slice
+  // (e.g. team="Land Use" or type="Public Records") without forking the
+  // component. Lens fields applied first; status/q filter on top.
+  const lensed = SAMPLE.submissions.filter(s => {
+    if (!lens || !lens.match) return true;
+    return lens.match(s);
+  });
+  const filtered = lensed.filter(s => {
     if (statusFilter !== "all" && s.status.toLowerCase() !== statusFilter) return false;
     if (q && !(`${s.id} ${s.title} ${s.requester}`.toLowerCase().includes(q.toLowerCase()))) return false;
     return true;
   });
 
-  const counts = SAMPLE.submissions.reduce((m, s) => { m[s.status] = (m[s.status] || 0) + 1; return m; }, {});
+  const counts = lensed.reduce((m, s) => { m[s.status] = (m[s.status] || 0) + 1; return m; }, {});
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader
-        title="Submissions"
-        sub={`${SAMPLE.submissions.length} matters · sorted by deadline · grouped by team`}
+        title={(lens && lens.title) || "Submissions"}
+        sub={(lens && lens.sub) || `${SAMPLE.submissions.length} matters · sorted by deadline · grouped by team`}
         right={
           <>
             <Btn icon={<I.Eye size={13} />} variant="default" size="sm">View</Btn>
@@ -99,7 +106,7 @@ const Submissions = ({ go }) => {
       {/* status tabs */}
       <div style={{ display: "flex", gap: 0, padding: "0 20px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
         {[
-          { id: "all", label: "All", n: SAMPLE.submissions.length },
+          { id: "all", label: "All", n: lensed.length },
           { id: "draft", label: "Draft", n: counts.Draft || 0 },
           { id: "submitted", label: "Submitted", n: counts.Submitted || 0 },
           { id: "acknowledged", label: "Acknowledged", n: counts.Acknowledged || 0 },
@@ -175,7 +182,7 @@ const Submissions = ({ go }) => {
       </div>
 
       <div style={{ height: 32, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--ink-3)", background: "var(--canvas)" }}>
-        <span>{filtered.length} of {SAMPLE.submissions.length} matters · 3 breaching · 6 awaiting acknowledgment</span>
+        <span>{filtered.length} of {lensed.length} matters · 3 breaching · 6 awaiting acknowledgment</span>
         <span className="mono">↑ ↓ to navigate · Enter to open · ⌘N for new</span>
       </div>
     </div>

@@ -45,8 +45,16 @@ function App() {
     if (route === "ai") return <window.AiPage go={go} />;
     if (route === "bie") return <window.Bie go={go} />;
     if (route === "ce") return <window.CodeEnforcement go={go} />;
-    if (route === "lu") return <Submissions go={go} />;
-    if (route === "pr") return <Submissions go={go} />;
+    if (route === "lu") return <Submissions go={go} lens={{
+      title: "Land Use & Planning",
+      sub: "Submissions routed to the Land Use team",
+      match: (s) => s.team === "Land Use" || s.matter === "Drafting" && s.type === "Ordinance",
+    }} />;
+    if (route === "pr") return <Submissions go={go} lens={{
+      title: "Public Records",
+      sub: "Chapter 119 requests and policy guidance",
+      match: (s) => s.type === "Public Records" || s.department === "Sheriff",
+    }} />;
     if (route === "policy") return <window.Policy />;
     if (route === "precedents") return <window.Precedents go={go} />;
     if (route === "kpi") return <window.Kpi />;
