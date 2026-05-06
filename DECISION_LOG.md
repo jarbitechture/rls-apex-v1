@@ -164,3 +164,36 @@ All locks from the planning session. Every entry is `Decision · Rationale · Re
 | 10 | `MatterClassification` | **Claude addition** | `privileged \| public_record \| confidential`. Drives per-matter ACL on `mcp-tools/docs`, exclusion from corpus indexing, public-records exemption flags. Load-bearing across at least four prior decisions in this session. |
 
 **Reversal cost:** Low while no migrations have run; medium after Alembic baseline.
+
+---
+
+## v0.1.1 increments (session 2026-05-06)
+
+### D-001 implementation — Architecture A+ wire-up
+
+**Decision:** ROI sidecar emits via Architecture A+ (POST primary to manatee-ai-roi FastAPI, local-fallback JSONL on this host when the breaker opens, background drain on recovery). Vendored async client at `apps/gateway/sidecar/_client.py` (~290 LoC, self-contained — no `manatee_ai_roi` Python dep per Lock #1 spirit).
+
+**Schema:** `apps/gateway/sidecar/manatee_ai_roi.schema.json` regenerated from manatee-ai-roi schema 1.1.0 (adds `event_kind` enum with 11 values). Drift caught by CI in the manatee-ai-roi repo (`tests/test_json_schema_drift.py`).
+
+**Defaults (per spec §9 sign-off):**
+
+- POST timeout: 3s
+- Drain interval: 60s
+- Breaker: 5 consecutive failures → open 30s → half-open probe
+- Endpoint: `$ROI_EVENTS_URL` (default `http://localhost:8000`)
+- Fallback path: `$ROI_FALLBACK_PATH` (default `/var/log/rls-apex-v1/roi-fallback.jsonl`)
+
+**Wired emit points:**
+
+| # | Location | event_kind | Status |
+|---|---|---|---|
+| 1 | `agent_dispatch` mock stream "done" event | `llm_call` | wired |
+| 2 | `/api/query` real handler stream close | `llm_call` | TODO (handler currently 501) |
+| 3 | citation surface | `rag_hit` | TODO |
+| 4 | decision write | `tool_invocation` (`tool=decision_writer`) | TODO |
+| 5 | workflow step boundary | `tool_invocation` | TODO |
+| 6 | MCP tool invocation hook | `tool_invocation` (`tool=<systemd_unit>`) | TODO (gated on Lock #7 wire-up) |
+
+**Health:** `/api/health/sidecar` returns the same shape as manatee-ai-roi's `/health/sidecar` (state, consecutive_failures, dropped_events_total, fallback_count, last_drain_ts, last_drain_count, drained_total) plus rls-apex-v1 metadata (endpoint, fallback_path, mock).
+
+**Reversal cost:** Low — `_client.py` can swap transports without touching `emit_roi(event: dict)` call sites.

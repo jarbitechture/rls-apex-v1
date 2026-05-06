@@ -50,21 +50,47 @@ _RAW_ALLOWLIST = os.environ.get("RLS_ALLOWLIST", "").strip()
 RLS_ALLOWLIST = {x.strip() for x in _RAW_ALLOWLIST.split(",") if x.strip()}
 DEV_USER_UPN = os.environ.get("DEV_USER_UPN", "dev@local")
 
+# ─── ROI sidecar singleton ────────────────────────────────────────
+# A_Plus_Client (POST → manatee-ai-roi FastAPI; local fallback JSONL on this
+# host when the breaker opens; background drain on recovery). Initialized in
+# lifespan; held at module scope so emit_roi() (sync API kept for existing
+# call sites) can fire-and-forget.
+
+_ROI_ENDPOINT = os.environ.get("ROI_EVENTS_URL", "http://localhost:8000")
+_ROI_FALLBACK_PATH = os.environ.get(
+    "ROI_FALLBACK_PATH", "/var/log/rls-apex-v1/roi-fallback.jsonl"
+)
+_roi_client = None  # set in lifespan; type: RoiClient | None
+
+
 # ─── Lifespan ─────────────────────────────────────────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Boot order: Key Vault → JWT keypair → MCP clients → Phoenix → DSPy.
+    """Boot order: Key Vault → JWT keypair → MCP clients → Phoenix → DSPy → ROI.
 
     On shutdown: drain in-flight DSPy calls, flush ROI sidecar buffer,
     close MCP HTTP clients, sync lineage chain to disk.
     """
+    global _roi_client
     # TODO: load secrets from Azure Key Vault (kv-rls-apex)
     # TODO: load JWT signing keypair from Key Vault, expose to MCP dispatcher
     # TODO: instantiate MCP clients (one per tool, with circuit breakers)
     # TODO: configure Phoenix OTel exporter → bcc-db-llm01:6006
     # TODO: configure DSPy with SGLang base_url + model name
+    try:
+        from apps.gateway.sidecar._client import RoiClient
+
+        _roi_client = RoiClient(
+            endpoint=_ROI_ENDPOINT,
+            fallback_path=_ROI_FALLBACK_PATH,
+        )
+        await _roi_client.start_drain_loop()
+    except Exception as exc:  # noqa: BLE001
+        # Telemetry must never block boot. Log and continue without sidecar.
+        print(f"[gateway] ROI client init failed (continuing): {exc}", flush=True)
+        _roi_client = None
     if DEV_MODE:
         # Corpus retrieval is part of the build, not optional. Load on
         # startup; if no index exists, auto-ingest from corpus/raw/. If
@@ -87,7 +113,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as e:  # noqa: BLE001
             print(f"[gateway] corpus load failed: {e}", flush=True)
     yield
-    # TODO: graceful shutdown
+    # graceful shutdown
+    if _roi_client is not None:
+        try:
+            await _roi_client.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 app = FastAPI(
@@ -449,14 +480,31 @@ async def recent_feedback(user: dict = Depends(current_user)) -> dict:
 
 @app.get("/api/health/sidecar", tags=["ops"])
 async def health_sidecar() -> dict:
-    """Rule #19 contract — circuit breaker status. Mock: always closed."""
-    return {
-        "breaker": "closed",
-        "consecutive_failures": 0,
-        "last_open_ts": None,
-        "sink": str(_FEEDBACK_PATH),
-        "mock": DEV_MODE,
-    }
+    """Rule #19 contract — ROI sidecar circuit-breaker + fallback status.
+
+    Returns the same shape as manatee-ai-roi's /health/sidecar endpoint
+    (state, consecutive_failures, dropped_events_total, fallback_count,
+    last_drain_ts, last_drain_count, drained_total) plus rls-apex-v1
+    metadata for ops correlation.
+    """
+    if _roi_client is None:
+        return {
+            "state": "uninitialized",
+            "consecutive_failures": 0,
+            "dropped_events_total": 0,
+            "fallback_count": 0,
+            "last_drain_ts": None,
+            "last_drain_count": 0,
+            "drained_total": 0,
+            "endpoint": _ROI_ENDPOINT,
+            "fallback_path": _ROI_FALLBACK_PATH,
+            "mock": DEV_MODE,
+        }
+    status = _roi_client.breaker_status()
+    status["endpoint"] = _ROI_ENDPOINT
+    status["fallback_path"] = _ROI_FALLBACK_PATH
+    status["mock"] = DEV_MODE
+    return status
 
 
 # ─── Mock RLS data endpoints (DEV_MODE) ───────────────────────────
@@ -820,15 +868,43 @@ async def agent_dispatch(request: Request, user: dict = Depends(current_user)) -
             await asyncio.sleep(0.06)
 
         yield sse("step", {"name": "_chain", "status": "done", "t_ms": int((time.perf_counter() - t0) * 1000)})
+        _final_prompt_tokens = 64 + random.randint(-12, 20)
+        _final_output_tokens = 110 + random.randint(-20, 40)
+        _final_duration_ms = int((time.perf_counter() - t0) * 1000)
         yield sse("done", {
             "kind": kind,
             "intent": intent,
             "lineage_id": lineage_id,
-            "prompt_tokens": 64 + random.randint(-12, 20),
-            "output_tokens": 110 + random.randint(-20, 40),
-            "duration_ms": int((time.perf_counter() - t0) * 1000),
+            "prompt_tokens": _final_prompt_tokens,
+            "output_tokens": _final_output_tokens,
+            "duration_ms": _final_duration_ms,
             "citations_source": "corpus" if real_hits else ("canned" if citations_for_ctx else "none"),
             "llm_provider": _llm.provider() if _LLM_OK else "mock",
+        })
+
+        # Operating Rule #18: emit one ROI event per user-facing action.
+        # Architecture A+ (POST primary, local-fallback JSONL, background drain).
+        emit_roi({
+            "event_kind": "llm_call",
+            "workflow": f"rls_apex.agent.{kind}",
+            "user_id": user.get("upn", "unknown"),
+            "dept": user.get("dept", "County Attorney"),
+            "role_band": user.get("role_band", "professional"),
+            "task_type": "search",
+            "tool": "rls_apex",
+            "surface": "other",
+            "prompt_tokens": _final_prompt_tokens,
+            "output_tokens": _final_output_tokens,
+            "duration_s": round(_final_duration_ms / 1000.0, 3),
+            "success": True,
+            "extra": {
+                "intent": intent,
+                "lineage_id": lineage_id,
+                "citations_source": "corpus" if real_hits else (
+                    "canned" if citations_for_ctx else "none"
+                ),
+                "llm_provider": _llm.provider() if _LLM_OK else "mock",
+            },
         })
 
     return StreamingResponse(stream(), media_type="text/event-stream")
@@ -882,15 +958,18 @@ async def matter_drafts_reserved(matter_id: str, path: str) -> dict:
 
 
 def emit_roi(event: dict) -> None:
-    """Append-only JSONL on bcc-db-llm01. One event per user-facing action.
+    """Architecture A+: POST to manatee-ai-roi FastAPI; on failure, append
+    to local fallback JSONL on this host; background drain on recovery.
 
     Schema bound to apps/gateway/sidecar/manatee_ai_roi.schema.json.
-    Power BI Gateway pulls from the file on a 5-minute cadence.
+    Validation happens client-side pre-flight; FastAPI re-validates server-side.
 
+    Fire-and-forget. NEVER blocks the user-facing action (Operating Rule #18).
     Only metadata. NEVER prompt bodies, output bodies, or document content.
     """
-    # TODO: validate against schema
-    # TODO: append to /var/log/rls-apex-v1/roi/YYYY-MM-DD.jsonl
+    if _roi_client is None:
+        return
+    _roi_client.emit_now(event)
 
 
 # ─── MCP dispatcher (D-008) ───────────────────────────────────────
