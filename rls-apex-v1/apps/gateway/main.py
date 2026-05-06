@@ -387,6 +387,283 @@ async def health_sidecar() -> dict:
     }
 
 
+# ─── Mock RLS data endpoints (DEV_MODE) ───────────────────────────
+# Each returns a shape identical to window.SAMPLE in src/data.jsx, so the
+# React tree can swap from inline data to fetch() with no schema change.
+# Real production handlers replace these — the URLs and shapes don't move.
+
+if DEV_MODE:
+    from . import _mock_data as _mock
+
+    _DECISIONS_BY_RLS: dict[str, list[dict]] = {}
+    _NEXT_RLS_ID = [143]  # next minted ID; mutated by /api/rls/draft
+
+    @app.get("/api/sample", tags=["mock"])
+    async def sample_payload() -> dict:
+        """Single-shot composite for the React tree if it wants to bootstrap
+        from one fetch instead of N. Optional — components can also hit
+        the granular endpoints below."""
+        return _mock.all_payload()
+
+    @app.get("/api/rls", tags=["mock"])
+    async def list_rls(
+        status: str | None = None,
+        department: str | None = None,
+        team: str | None = None,
+    ) -> dict:
+        items = _mock.SUBMISSIONS
+        if status:
+            items = [r for r in items if r["status"].lower() == status.lower()]
+        if department:
+            items = [r for r in items if r["department"].lower() == department.lower()]
+        if team:
+            items = [r for r in items if r["team"].lower() == team.lower()]
+        return {"items": items, "total": len(items)}
+
+    @app.get("/api/rls/{rls_id}", tags=["mock"])
+    async def get_rls(rls_id: str) -> dict:
+        match = next((r for r in _mock.SUBMISSIONS if r["id"] == rls_id), None)
+        if not match:
+            raise HTTPException(status_code=404, detail=f"unknown rls id: {rls_id}")
+        decisions = _DECISIONS_BY_RLS.get(rls_id, [])
+        return {**match, "decisions": decisions}
+
+    @app.post("/api/rls/draft", tags=["mock"])
+    async def create_rls_draft(request: Request, user: dict = Depends(current_user)) -> dict:
+        body = await request.json()
+        n = _NEXT_RLS_ID[0]; _NEXT_RLS_ID[0] += 1
+        new = {
+            "id": f"RLS-26-{n:04d}",
+            "title": body.get("title") or "Untitled draft",
+            "type": body.get("type") or "Advisory",
+            "matter": body.get("matter") or "Advisory",
+            "requester": user.get("display_name") or user.get("upn") or "—",
+            "department": body.get("department") or "—",
+            "status": "Draft",
+            "urgency": body.get("urgency") or "Standard",
+            "submitted": "—",
+            "deadline": body.get("deadline") or "—",
+            "workingDays": 0,
+            "assignee": "—",
+            "team": "—",
+            "completeness": int(body.get("completeness") or 30),
+            "risk": "—",
+            "bie": bool(body.get("bie") or False),
+            "attachments": int(body.get("attachments") or 0),
+            "activity": [0] * 15,
+        }
+        _mock.SUBMISSIONS.insert(0, new)
+        return {"ok": True, "id": new["id"], "rls": new}
+
+    @app.post("/api/rls/{rls_id}/decision", tags=["mock"])
+    async def decide_rls(rls_id: str, request: Request, user: dict = Depends(current_user)) -> dict:
+        body = await request.json()
+        decision = body.get("decision")
+        if decision not in ("accept", "reject", "return"):
+            raise HTTPException(status_code=400, detail="decision must be 'accept', 'reject', or 'return'")
+        match = next((r for r in _mock.SUBMISSIONS if r["id"] == rls_id), None)
+        if not match:
+            raise HTTPException(status_code=404, detail=f"unknown rls id: {rls_id}")
+        row = {
+            "ts": time.time(), "rls_id": rls_id,
+            "decision": decision, "user": user.get("upn"),
+            "note": (body.get("note") or "")[:280],
+        }
+        _DECISIONS_BY_RLS.setdefault(rls_id, []).append(row)
+        match["status"] = {"accept": "Acknowledged", "reject": "Rejected", "return": "Submitted"}[decision]
+        return {"ok": True, "rls_id": rls_id, "decision": decision, "new_status": match["status"]}
+
+    @app.get("/api/drafts", tags=["mock"])
+    async def list_drafts(user: dict = Depends(current_user)) -> dict:
+        return {"items": _mock.DRAFTS}
+
+    @app.post("/api/drafts", tags=["mock"])
+    async def create_draft(request: Request, user: dict = Depends(current_user)) -> dict:
+        body = await request.json()
+        new = {
+            "id": f"DRAFT-26-{random.randint(100, 9999):04d}",
+            "title": body.get("title") or "Untitled draft",
+            "department": body.get("department") or "—",
+            "updated": time.strftime("%Y-%m-%d"),
+            "completeness": int(body.get("completeness") or 30),
+            "blockers": list(body.get("blockers") or []),
+        }
+        _mock.DRAFTS.insert(0, new)
+        return {"ok": True, "id": new["id"], "draft": new}
+
+    @app.put("/api/drafts/{draft_id}", tags=["mock"])
+    async def save_draft(draft_id: str, request: Request, user: dict = Depends(current_user)) -> dict:
+        body = await request.json()
+        match = next((d for d in _mock.DRAFTS if d["id"] == draft_id), None)
+        if not match:
+            raise HTTPException(status_code=404, detail=f"unknown draft id: {draft_id}")
+        for k in ("title", "department", "completeness", "blockers"):
+            if k in body:
+                match[k] = body[k]
+        match["updated"] = time.strftime("%Y-%m-%d")
+        return {"ok": True, "draft": match}
+
+    @app.get("/api/precedents", tags=["mock"])
+    async def search_precedents(q: str = "") -> dict:
+        # Reuses the same intent-routed mocks as /api/query — keeps the two
+        # call sites consistent.
+        mock = _pick_mock(q or "general procurement question")
+        return {"q": q, "intent": mock["intent"], "items": mock["citations"]}
+
+    @app.get("/api/kpi/summary", tags=["mock"])
+    async def kpi_summary() -> dict:
+        return _mock.KPIS
+
+    @app.get("/api/inbox", tags=["mock"])
+    async def inbox() -> dict:
+        unread = sum(1 for i in _mock.INBOX if i.get("unread"))
+        return {"items": _mock.INBOX, "unread": unread}
+
+    @app.get("/api/queue", tags=["mock"])
+    async def queue() -> dict:
+        return {"items": _mock.QUEUE, "incoming14": _mock.INCOMING_14, "closed14": _mock.CLOSED_14}
+
+    @app.get("/api/team-load", tags=["mock"])
+    async def team_load() -> dict:
+        return {"items": _mock.TEAM_LOAD}
+
+    @app.get("/api/compliance-pulse", tags=["mock"])
+    async def compliance_pulse() -> dict:
+        return {"items": _mock.COMPLIANCE_PULSE}
+
+
+# ─── Agent dispatcher (DEV_MODE) ──────────────────────────────────
+# Every UI action — Submit, Accept, Reject, Triage, Precedent search, etc. —
+# goes through one endpoint that streams an SSE response with a step trace,
+# a streamed answer, and any citations. Agent kinds map to canned scripts.
+# When SGLang lands, each kind delegates to the real DSPy chain; the SSE
+# contract and the call sites in the UI stay identical.
+
+_AGENT_SCRIPTS: dict[str, dict] = {
+    "triage": {
+        "label": "Triage submission",
+        "steps": [("classify", 90), ("retrieve.hybrid", 240), ("score_completeness", 110), ("suggest_team", 80), ("compose", 0)],
+        "answer_template": (
+            "Triage complete. Classified as {intent}, completeness scored at 84/100. "
+            "Two missing items flagged: (a) director signature on critical/urgent matters, "
+            "(b) BIE worksheet for proposed-ordinance type. Suggested team: {team} "
+            "(based on team-load + matter type)."
+        ),
+    },
+    "precedent": {
+        "label": "Find precedents",
+        "steps": [("classify", 110), ("retrieve.hybrid", 285), ("policy_graph.cited_by", 165), ("rank", 75), ("compose", 0)],
+        "answer_template": "Found 3 precedents matching intent={intent}. See citations below for cure paths and rejection patterns.",
+    },
+    "decide": {
+        "label": "Apply decision",
+        "steps": [("validate_decision", 60), ("update_status", 100), ("notify_requester", 90), ("emit_lineage", 50), ("emit_roi", 40)],
+        "answer_template": "Decision={decision} applied to {rls_id}. Status -> {new_status}. Requester notified. Lineage stamped. ROI event emitted.",
+    },
+    "draft": {
+        "label": "Draft response",
+        "steps": [("classify", 90), ("retrieve_template", 80), ("retrieve.hybrid", 220), ("compose", 0), ("guardrails", 60)],
+        "answer_template": "Drafted a {tone} response. Boilerplate from template-{template_id} adapted to context. Citations attached. Reviewer required: senior-counsel (per skill governance).",
+    },
+    "summarize": {
+        "label": "Summarize",
+        "steps": [("retrieve_context", 120), ("compose", 0)],
+        "answer_template": "Summary: {summary}. Confidence: medium. Three open questions surfaced — see follow-ups below.",
+    },
+    "completeness": {
+        "label": "Score completeness",
+        "steps": [("parse_attachments", 80), ("apply_rules", 120), ("compose", 0)],
+        "answer_template": "Completeness scored at 87/100. 5/6 compliance rules satisfied; flagged: BIE filing required for §125.66(3)(c) ordinance matter.",
+    },
+}
+
+
+def _format_template(t: str, ctx: dict) -> str:
+    safe_ctx = {k: ctx.get(k) or "—" for k in ("intent", "team", "decision", "rls_id", "new_status", "tone", "template_id", "summary")}
+    try: return t.format(**safe_ctx)
+    except Exception: return t
+
+
+@app.post("/api/agent/dispatch", tags=["agent"])
+async def agent_dispatch(request: Request, user: dict = Depends(current_user)) -> StreamingResponse:
+    """Streams an SSE response for any UI action. Body: {kind, context}.
+    `kind` picks an agent script; `context` is opaque metadata stamped on
+    every emitted event for tracing.
+
+    In production each kind invokes the DSPy chain in agents/<kind>/chain.py
+    and dispatches MCP tools per the locked stack. The mock keeps the same
+    SSE shape so no UI rewire is needed at swap time."""
+    if not DEV_MODE:
+        raise HTTPException(status_code=501, detail="agent dispatcher not yet wired to real backends")
+
+    body = await request.json()
+    kind = (body.get("kind") or "").strip()
+    context = body.get("context") or {}
+    script = _AGENT_SCRIPTS.get(kind)
+    if not script:
+        raise HTTPException(status_code=400, detail=f"unknown agent kind: {kind}")
+
+    # Decide on a mock for the answer + citations based on the user-supplied
+    # question OR the rls's title (for actions on existing rows).
+    seed_q = (context.get("q") or context.get("question") or context.get("title") or "general procurement").lower()
+    pick = _pick_mock(seed_q)
+    intent = pick["intent"]
+
+    answer_ctx = {
+        "intent": intent,
+        "team": context.get("team") or "Land Use",
+        "decision": context.get("decision") or "—",
+        "rls_id": context.get("rls_id") or "—",
+        "new_status": context.get("new_status") or "Acknowledged",
+        "tone": "neutral-firm",
+        "template_id": "draft-bie-preamble",
+        "summary": "{} flagged at {} fact pattern".format(intent, "Fla. Stat. §125.65(2)" if intent.startswith("sole") else "§125.66(3)(c)"),
+    }
+    answer_text = _format_template(script["answer_template"], answer_ctx)
+    lineage_id = f"ln-mock-{random.randint(1000, 9999)}"
+
+    async def stream() -> AsyncIterator[bytes]:
+        def sse(event: str, data: dict) -> bytes:
+            return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
+
+        t0 = time.perf_counter()
+        yield sse("agent", {"kind": kind, "label": script["label"], "context": context, "lineage_id": lineage_id})
+        yield sse("step", {"name": "_chain", "status": "start", "t_ms": 0})
+
+        for name, base_ms in script["steps"]:
+            t_start = int((time.perf_counter() - t0) * 1000)
+            yield sse("step", {"name": name, "status": "start", "t_ms": t_start})
+            await asyncio.sleep((base_ms + random.randint(-25, 35)) / 1000)
+            if name == "compose":
+                for word in answer_text.split(" "):
+                    yield sse("token", {"text": word + " "})
+                    await asyncio.sleep(0.022)
+            t_end = int((time.perf_counter() - t0) * 1000)
+            yield sse("step", {"name": name, "status": "done", "t_ms": t_end})
+
+        if kind in ("precedent", "draft", "triage"):
+            for c in pick["citations"]:
+                yield sse("citation", c)
+                await asyncio.sleep(0.06)
+
+        yield sse("step", {"name": "_chain", "status": "done", "t_ms": int((time.perf_counter() - t0) * 1000)})
+        yield sse("done", {
+            "kind": kind,
+            "intent": intent,
+            "lineage_id": lineage_id,
+            "prompt_tokens": 64 + random.randint(-12, 20),
+            "output_tokens": 110 + random.randint(-20, 40),
+            "duration_ms": int((time.perf_counter() - t0) * 1000),
+        })
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/agent/kinds", tags=["agent"])
+async def agent_kinds() -> dict:
+    return {"items": [{"kind": k, "label": v["label"], "steps": [s[0] for s in v["steps"]]} for k, v in _AGENT_SCRIPTS.items()]}
+
+
 @app.get("/api/skills/templates", tags=["skills"])
 async def list_templates(user: dict = Depends(current_user)) -> list[dict]:
     """List skill templates from skills/templates/. Frontmatter parsed.

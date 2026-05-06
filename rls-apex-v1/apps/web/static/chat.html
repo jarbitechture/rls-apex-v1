@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RLS Apex v1 — Internal Click-through</title>
+<style>
+  :root {
+    --primary: #2B7A9E;
+    --bg: #fafaf7;
+    --card: #ffffff;
+    --ink: #2a2a2a;
+    --muted: #767066;
+    --border: #e5e1d8;
+    --accept: #2c7d4a;
+    --reject: #b04a3a;
+    --warn: #b67a14;
+    --ok: #2c7d4a;
+    --pending: #b67a14;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5;
+  }
+  .wrap { display: grid; grid-template-columns: 1fr 280px; gap: 28px; max-width: 1100px; margin: 0 auto; padding: 36px 24px 80px; }
+  @media (max-width: 880px) { .wrap { grid-template-columns: 1fr; } aside { order: 2; } }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+  .pill { display: inline-block; font-size: 11px; padding: 3px 10px; background: var(--border); border-radius: 999px; color: var(--muted); letter-spacing: 0.02em; }
+  .lede { color: var(--muted); font-size: 13px; margin: 4px 0 24px; }
+  textarea {
+    width: 100%; min-height: 86px; padding: 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: inherit; font-size: 14px; line-height: 1.5;
+    background: var(--card); color: var(--ink); resize: vertical;
+  }
+  textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+  .toolbar { margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    background: var(--primary); color: white; border: 0;
+    padding: 9px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 14px; font-weight: 500;
+    transition: opacity 0.15s, transform 0.05s;
+  }
+  button:active { transform: translateY(1px); }
+  button.ghost { background: transparent; color: var(--muted); padding: 9px 12px; }
+  button.ghost:hover { background: var(--border); color: var(--ink); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .example {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+    color: var(--ink); cursor: pointer;
+  }
+  .example:hover { border-color: var(--primary); color: var(--primary); }
+
+  .trace { margin-top: 22px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .step {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 999px; font-size: 11px;
+    color: var(--muted); display: flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .step.active { border-color: var(--primary); color: var(--primary); }
+  .step.active .dot { background: var(--primary); animation: pulse 0.9s ease-in-out infinite; }
+  .step.done { border-color: var(--ok); color: var(--ok); }
+  .step.done .dot { background: var(--ok); animation: none; }
+  .step .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .step .ms { color: var(--muted); margin-left: 4px; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .answer {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 18px; margin-top: 16px; border-radius: 8px;
+    min-height: 60px; line-height: 1.65;
+    white-space: pre-wrap;
+  }
+  .answer.empty { color: var(--muted); font-style: italic; }
+  .answer .cursor { display: inline-block; width: 2px; height: 1em; background: var(--primary); vertical-align: text-bottom; animation: blink 1s step-end infinite; margin-left: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  h2.cite-head { margin-top: 22px; }
+  .citations { display: grid; gap: 10px; }
+  .citation {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 12px 14px; border-radius: 6px;
+  }
+  .citation .id { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--primary); font-weight: 600; }
+  .citation .meta { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .citation .excerpt { font-size: 13px; color: var(--ink); margin-top: 6px; line-height: 1.55; }
+
+  .actions { margin-top: 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .actions .accept { background: var(--accept); }
+  .actions .reject { background: var(--reject); }
+  .meta-line { margin-left: auto; color: var(--muted); font-size: 11px; font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: white; padding: 10px 18px; border-radius: 6px;
+    font-size: 13px; opacity: 0; transition: opacity 0.18s;
+    pointer-events: none; z-index: 10;
+  }
+  .toast.show { opacity: 1; }
+
+  aside { font-size: 12px; }
+  aside section + section { margin-top: 26px; }
+  aside .row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  aside .row:last-child { border-bottom: 0; }
+  aside .row .label { color: var(--ink); }
+  aside .row .v { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; }
+  aside .v.ok { color: var(--ok); }
+  aside .v.pending { color: var(--pending); }
+  aside .v.mock { color: var(--reject); }
+  aside .v::before { content: "● "; }
+
+  .history-row { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .history-row:last-child { border-bottom: 0; }
+  .history-row .deco { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; }
+  .history-row .deco.accept { color: var(--ok); }
+  .history-row .deco.reject { color: var(--reject); }
+  .history-row .qsnip { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .history-empty { color: var(--muted); font-style: italic; }
+
+  footer { grid-column: 1 / -1; margin-top: 24px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); padding-top: 14px; }
+  footer code { font-size: 11px; background: var(--border); padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <main>
+      <header>
+        <h1>RLS Apex v1</h1>
+        <span class="pill">v0.1.0 · mock</span>
+      </header>
+      <p class="lede">Internal click-through. Retrieval, DSPy chain, and SGLang are mocked. UI/UX validation only — no real corpus, no real model.</p>
+
+      <textarea id="q" placeholder='Type a draft RLS question, or pick an example below.'></textarea>
+      <div class="examples" id="examples"></div>
+      <div class="toolbar">
+        <button id="ask">Ask</button>
+        <button class="ghost" id="clear">Clear</button>
+        <span style="margin-left:auto; color:var(--muted); font-size:11px; font-family: ui-monospace, monospace;">POST /api/query · SSE</span>
+      </div>
+
+      <div id="trace" class="trace" hidden></div>
+
+      <div id="result" hidden>
+        <div class="answer" id="answer"></div>
+
+        <h2 class="cite-head">Citations</h2>
+        <div class="citations" id="citations"></div>
+
+        <div class="actions">
+          <button class="accept" id="accept">✓ Accept</button>
+          <button class="reject" id="reject">✗ Reject</button>
+          <span class="meta-line" id="meta"></span>
+        </div>
+      </div>
+    </main>
+
+    <aside>
+      <section>
+        <h2>Wiring · today</h2>
+        <div class="row"><span class="label">Gateway</span><span class="v ok">live</span></div>
+        <div class="row"><span class="label">/api/query</span><span class="v mock">mocked</span></div>
+        <div class="row"><span class="label">/api/feedback</span><span class="v ok">live (jsonl)</span></div>
+        <div class="row"><span class="label">/api/health/sidecar</span><span class="v ok">live</span></div>
+        <div class="row"><span class="label">Entra OIDC</span><span class="v mock">bypassed</span></div>
+        <div class="row"><span class="label">SGLang/Qwen</span><span class="v pending">week 2</span></div>
+        <div class="row"><span class="label">BM25 + LightRAG</span><span class="v pending">week 2</span></div>
+        <div class="row"><span class="label">Phoenix traces</span><span class="v pending">week 2</span></div>
+        <div class="row"><span class="label">GEPA compile</span><span class="v pending">weeks 5–6</span></div>
+      </section>
+      <section>
+        <h2>Recent decisions</h2>
+        <div id="history"><div class="history-empty">No decisions yet.</div></div>
+      </section>
+    </aside>
+
+    <footer>
+      DEV_AUTH_BYPASS=1 · synthetic user <code>dev@local</code> · all data fake.
+      Production: Entra ID OIDC at the gateway, BM25+LightRAG retrieval, DSPy chain on SGLang/Qwen2.5-14B-FP8.
+      Source: <code>apps/gateway/main.py</code>, <code>apps/web/static/index.html</code>.
+    </footer>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const EXAMPLES = [
+  "Can the County contract a sole-source IT vendor under §125.65 if findings are drafted concurrently?",
+  "Is a 60-month evergreen renewal enforceable against the County?",
+  "Vested rights claim under prior LDC §6.4.A.5 for a setback variance — is this defensible?",
+  "Can we exempt these civil-litigation records under §119.071(2)(d)?",
+];
+
+const STEP_ORDER = ["classify", "retrieve.hybrid", "policy_graph.cited_by", "rank", "compose"];
+const STEP_LABEL = {
+  "classify": "classify",
+  "retrieve.hybrid": "retrieve",
+  "policy_graph.cited_by": "graph",
+  "rank": "rank",
+  "compose": "compose",
+};
+
+const $ = (id) => document.getElementById(id);
+const qEl = $('q'), askBtn = $('ask'), clearBtn = $('clear');
+const traceEl = $('trace'), result = $('result'), answerEl = $('answer'), citationsEl = $('citations');
+const metaEl = $('meta'), acceptBtn = $('accept'), rejectBtn = $('reject');
+const historyEl = $('history'), examplesEl = $('examples'), toastEl = $('toast');
+
+let lastResponse = null;
+
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+function renderExamples() {
+  examplesEl.innerHTML = '';
+  for (const ex of EXAMPLES) {
+    const b = document.createElement('button');
+    b.className = 'example';
+    b.textContent = ex.length > 70 ? ex.slice(0, 67) + '…' : ex;
+    b.title = ex;
+    b.onclick = () => { qEl.value = ex; qEl.focus(); };
+    examplesEl.appendChild(b);
+  }
+}
+
+function renderTraceSkeleton() {
+  traceEl.innerHTML = '';
+  traceEl.hidden = false;
+  for (const name of STEP_ORDER) {
+    const el = document.createElement('div');
+    el.className = 'step';
+    el.dataset.name = name;
+    el.innerHTML = `<span class="dot"></span><span class="lab">${STEP_LABEL[name]}</span><span class="ms"></span>`;
+    traceEl.appendChild(el);
+  }
+}
+
+function setStep(name, status, ms, output) {
+  const el = traceEl.querySelector(`.step[data-name="${CSS.escape(name)}"]`);
+  if (!el) return;
+  el.classList.remove('active', 'done');
+  if (status === 'start') el.classList.add('active');
+  if (status === 'done') {
+    el.classList.add('done');
+    el.querySelector('.ms').textContent = ms != null ? ` · ${ms}ms` : '';
+    if (output != null) el.querySelector('.lab').textContent = `${STEP_LABEL[name]}=${output}`;
+  }
+}
+
+async function ask() {
+  const q = qEl.value.trim();
+  if (!q) { qEl.focus(); return; }
+  askBtn.disabled = true;
+  result.hidden = false;
+  answerEl.textContent = '';
+  answerEl.innerHTML = '<span class="cursor"></span>';
+  citationsEl.innerHTML = '';
+  metaEl.textContent = '';
+  lastResponse = { question: q, lineage_id: null, intent: null };
+  renderTraceSkeleton();
+
+  const cursor = answerEl.querySelector('.cursor');
+  let textNode = document.createTextNode('');
+  answerEl.insertBefore(textNode, cursor);
+
+  try {
+    const res = await fetch('/api/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q })
+    });
+    if (!res.ok) {
+      answerEl.textContent = `Error: ${res.status} ${await res.text()}`;
+      return;
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let stepStart = {};
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n\n')) !== -1) {
+        const chunk = buf.slice(0, nl); buf = buf.slice(nl + 2);
+        const lines = chunk.split('\n');
+        let evt = 'message', data = '';
+        for (const l of lines) {
+          if (l.startsWith('event:')) evt = l.slice(6).trim();
+          else if (l.startsWith('data:')) data = l.slice(5).trim();
+        }
+        if (!data) continue;
+        const p = JSON.parse(data);
+        if (evt === 'token') {
+          textNode.appendData(p.text);
+        } else if (evt === 'step') {
+          if (p.name === '_chain') continue;
+          if (p.status === 'start') {
+            stepStart[p.name] = p.t_ms;
+            setStep(p.name, 'start');
+          } else if (p.status === 'done') {
+            const ms = (p.t_ms != null && stepStart[p.name] != null) ? (p.t_ms - stepStart[p.name]) : null;
+            setStep(p.name, 'done', ms, p.output);
+          }
+        } else if (evt === 'citation') {
+          const div = document.createElement('div');
+          div.className = 'citation';
+          div.innerHTML =
+            `<div><span class="id">${p.id}</span><span class="meta">${p.source_kind} · ${p.pinpoint}</span></div>` +
+            `<div class="excerpt">${p.excerpt}</div>`;
+          citationsEl.appendChild(div);
+        } else if (evt === 'done') {
+          metaEl.textContent = `${p.prompt_tokens} in · ${p.output_tokens} out · ${p.lineage_id} · intent=${p.intent}`;
+          lastResponse.lineage_id = p.lineage_id;
+          lastResponse.intent = p.intent;
+        }
+      }
+    }
+    cursor.remove();
+  } finally {
+    askBtn.disabled = false;
+  }
+}
+
+async function postFeedback(decision) {
+  if (!lastResponse) return;
+  const r = await fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision, ...lastResponse }),
+  });
+  if (r.ok) {
+    showToast(decision === 'accept' ? 'Accepted — logged' : 'Rejected — logged');
+    refreshHistory();
+  } else {
+    showToast(`Error: ${r.status}`);
+  }
+}
+
+async function refreshHistory() {
+  const r = await fetch('/api/feedback/recent');
+  if (!r.ok) return;
+  const { items } = await r.json();
+  if (!items.length) { historyEl.innerHTML = '<div class="history-empty">No decisions yet.</div>'; return; }
+  historyEl.innerHTML = '';
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'history-row';
+    const t = new Date((it.ts || 0) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+    row.innerHTML =
+      `<div class="deco ${it.decision}">${it.decision === 'accept' ? '✓' : '✗'} ${it.decision} · ${t}</div>` +
+      `<div class="qsnip">${(it.intent || '—')} · ${(it.question || '').slice(0, 60)}</div>`;
+    historyEl.appendChild(row);
+  }
+}
+
+askBtn.addEventListener('click', ask);
+qEl.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') ask(); });
+clearBtn.addEventListener('click', () => { qEl.value = ''; result.hidden = true; traceEl.hidden = true; qEl.focus(); });
+acceptBtn.addEventListener('click', () => postFeedback('accept'));
+rejectBtn.addEventListener('click', () => postFeedback('reject'));
+
+renderExamples();
+refreshHistory();
+qEl.focus();
+</script>
+</body>
+</html>
