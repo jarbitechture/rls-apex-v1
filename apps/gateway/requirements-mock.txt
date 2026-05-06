@@ -1,0 +1,15 @@
+# Minimum to run the v0.1.0 mock click-through (Lock #9, week 1).
+# Skips DSPy, Phoenix, asyncpg, MinIO, Azure, MSAL — none of which the mock needs.
+# Production gateway uses the full apps/gateway/requirements.txt.
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+# Corpus retrieval (pure-Python; in-process BM25 over the local corpus).
+# In production these get replaced by BM25+LightRAG+Contextual Retrieval+pgvector
+# behind the same /api/retrieve contract.
+pypdf==5.1.0
+cryptography==48.0.0
+rank-bm25==0.2.2
+# Async HTTP for the multi-provider LLM client (Ollama, SGLang, OpenAI).
+# Pure-Python, ~500KB. Used only when LLM_PROVIDER != mock.
+httpx==0.27.2

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# bin/ingest — extract text from corpus/raw/* and (re)build the BM25 index.
+# After writing new manifest+index, ping /api/corpus/reload so a running
+# gateway picks up the change without restarting.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ -d .venv ]] || { echo "[ingest] no .venv — run bin/dev once to bootstrap"; exit 1; }
+export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+
+./.venv/bin/python -m apps.gateway.retrieval.ingest
+
+# Best-effort hot-reload of a running gateway.
+PORT="${PORT:-8080}"
+./.venv/bin/python - <<PY 2>/dev/null || true
+import urllib.request, json
+try:
+    r = urllib.request.urlopen(urllib.request.Request(
+        "http://127.0.0.1:${PORT}/api/corpus/reload", method="POST"), timeout=3)
+    body = json.loads(r.read())
+    print(f"[ingest] hot-reloaded gateway: {body['total_chunks']} chunks, {len(body['documents'])} docs")
+except Exception as e:
+    print(f"[ingest] gateway not running on :${PORT} (skipping hot-reload)")
+PY

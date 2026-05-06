@@ -1,7 +1,0 @@
-[Unit]
-Description=RLS Apex v1 — full stack
-Wants=mcp-tool@retrieve.service mcp-tool@policy-graph.service mcp-tool@ontology.service mcp-tool@lineage.service mcp-tool@docs.service mcp-tool@report-roi.service gateway.service
-After=mcp-tool@retrieve.service mcp-tool@policy-graph.service mcp-tool@ontology.service mcp-tool@lineage.service mcp-tool@docs.service mcp-tool@report-roi.service
-
-[Install]
-WantedBy=multi-user.target

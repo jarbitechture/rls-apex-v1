@@ -20,6 +20,16 @@ scraps/
 **/corpus/raw/
 **/corpus/extracted/
 
+# Eval datasets — residency rule (county data stays off public repos)
+eval/datasets/rls-v1/
+eval/datasets/*/
+!eval/datasets/.gitkeep
+
+# Codegen output — domain.yaml is the source of truth
+apps/gateway/_generated/
+mcp-tools/_generated/
+apps/web/src/_generated/
+
 # Python venvs (subdir bin/dev creates one)
 **/.venv/
 

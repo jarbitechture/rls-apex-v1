@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "rls-apex-v1/apps/web/static/**"
+      - "apps/web/static/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,7 +32,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: rls-apex-v1/apps/web/static
+          path: apps/web/static
 
       - name: Deploy
         id: deployment

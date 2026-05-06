@@ -1,46 +1,88 @@
 # RLS Apex v1
 
-**Manatee County BCC — Request for Legal Services pilot.**
-Production scaffold for the agent-driven RLS workflow. Independent of the cookbook project at `mcgpt.mymanatee.org` — learns its patterns, doesn't share its infrastructure.
+Manatee County Request for Legal Services (RLS) AI pilot — scaffold v0.1.0.
 
-This project is the **production scaffold**. The interaction-design prototype it descends from lives separately and remains the reference for UI shape only.
+> **Status:** scaffold only. No production code, no real corpus, no live endpoints.
+> Read [`DECISION_LOG.md`](./DECISION_LOG.md) before changing anything structural.
 
-## Status
+## What this is
 
-`v0.1.0` — scaffold phase. No production traffic. See `DECISION_LOG.md` for the locked decisions that shaped this layout, and `ARCHITECTURE.md` for the runtime shape.
-
-## Two-week target
-
-PrecedentRetriever end-to-end against the redacted RLS-v1 corpus, served through assistant-ui, instrumented with Phoenix + the manatee_ai_roi sidecar, gated by Entra ID OIDC.
-
-Internal click-through (you + Drew) at end of week 1. No external stakeholder demo until end of week 2.
-
-## What's here
+The production scaffold for the RLS interaction prototype (the React app at the project root). The prototype is the design reference; this folder is what runs on county infra.
 
 ```
-apps/web/                React UI (lifts the prototype, rewires to gateway via SSE)
-apps/gateway/            FastAPI · MSAL OIDC · ROI sidecar · MCP host · Phoenix
-mcp-tools/               Each = systemd unit, FastMCP 2.0, RS256 JWT, loopback
-  retrieve/              BM25 + LightRAG + Contextual Retrieval
-  policy-graph/          AGE Cypher
-  ontology/              domain.yaml validation
-  lineage/               hash-chain audit writer
-  docs/                  MinIO read/write, per-matter ACL
-  report-roi/            manatee_ai_roi emitter (Rule #18)
-skills/templates/        T-skills, frontmatter governed, PR-on-edit
-agents/precedent-retriever/   DSPy signatures + chain (uncompiled)
-eval/                    promptfoo + Inspect AI + smoke set
-domain.yaml              single source → Pydantic + Alembic + MCP schemas
-infra/                   systemd, Azure Bicep, GitHub Actions, bcc-db-llm01 install
+Surface     React UI (lifts prototype) · Entra ID OIDC · Static Web App
+Harness     Claude Agent SDK pattern — agents = system prompt + skills + tool allowlist
+Tools       MCP servers (FastMCP 2.0, separate processes, RS256 JWT, loopback)
+Skills      ./skills/templates/*.md  — versioned in git, hot-loaded
+Optimizer   DSPy + GEPA (offline batch, weeks 5–6, gated on attorney redlines)
+Inference   SGLang + Qwen2.5-FP8 on bcc-ap-infer01 (county LAN)
+State       bcc-db-llm01 — Postgres+pgvector+AGE + MinIO
+Observ.     Phoenix + Power BI + promptfoo + Inspect AI + manatee_ai_roi sidecar
 ```
 
-## Hard rules
+## First-time reader path
 
-1. **Residency binds.** No county data crosses the LAN boundary. PostHog Cloud out, Azure managed PG out for stateful data, RunPod for state out.
-2. **Governance is foundation.** Frontmatter on every skill. Every MCP tool gets s2s auth. Every LLM call carries a lineage hash. Audit rows are written before the user sees output.
-3. **No optimization without evidence.** GEPA waits for attorney redlines. The smoke eval is plumbing, never a quality signal — see `eval/smoke/README.md`.
-4. **Cookbook is not RLS.** No shared edge, no shared hostname, no shared auth chain. RLS gets its own everything.
+1. [`DECISION_LOG.md`](./DECISION_LOG.md) — every locked decision and its rationale
+2. [`ARCHITECTURE.md`](./ARCHITECTURE.md) — the rings, where they run, how they call each other
+3. [`RUNBOOK.md`](./RUNBOOK.md) — boot order, healthchecks, recovery
+4. [`domain.yaml`](./domain.yaml) — single source of truth for entities, relations, constraints
 
-## Getting started
+## Layout
 
-Not yet runnable end-to-end. See `RUNBOOK.md` for the bring-up sequence as it lands.
+```
+rls-apex-v1/
+├── README.md                     ← you are here
+├── ARCHITECTURE.md
+├── DECISION_LOG.md
+├── RUNBOOK.md
+├── domain.yaml                   single source → Pydantic + Alembic + MCP schemas
+├── apps/
+│   ├── web/                      React UI rewired to gateway via SSE
+│   └── gateway/                  FastAPI · MSAL OIDC · Phoenix instr · MCP host · ROI sidecar
+├── mcp-tools/                    Each = systemd unit, FastMCP 2.0, RS256 JWT, loopback
+│   ├── retrieve/                 BM25 + LightRAG + Contextual Retrieval (pgvector + AGE)
+│   ├── policy-graph/             AGE Cypher
+│   ├── ontology/                 domain.yaml validation
+│   ├── lineage/                  hash-chain audit writer
+│   ├── docs/                     MinIO read/write, per-matter ACL
+│   └── report-roi/               manatee_ai_roi.schema event emitter (Rule #18)
+├── skills/
+│   └── templates/                T-skills, frontmatter governed, PR-on-edit
+├── agents/
+│   └── precedent-retriever/      DSPy signatures + chain (uncompiled in v0.1.0)
+├── eval/
+│   ├── datasets/rls-v1/          .gitignored — pulled from county records, redacted
+│   ├── smoke/smoke_eval_DO_NOT_OPTIMIZE_AGAINST.jsonl
+│   ├── promptfoo/                CI smoke set
+│   └── inspect-ai/               full-trace agent eval
+├── infra/
+│   ├── systemd/mcp-tool@.service
+│   ├── azure/main.bicep          Static Web App, Key Vault, Entra app reg
+│   ├── github/                   Actions workflows
+│   └── bcc-db-llm01/             AGE install + MinIO unit + firewalld
+├── codegen/                      domain.yaml → Pydantic + Alembic + MCP schemas
+└── index.html                    browseable scaffold map (open in browser)
+```
+
+## Two-week target (Lock #9)
+
+| End of week | Deliverable | Audience |
+|---|---|---|
+| 1 | assistant-ui shell + mock PrecedentRetriever returning canned 3-doc result + citation rendering + accept/reject UI wired to no-op | Internal (you + Drew) |
+| 2 | Same shell, real BM25+LightRAG over redacted 50-opinion corpus, real DSPy chain (uncompiled), end-to-end SSE streaming, ROI events firing | Stakeholder demo |
+
+GEPA compile and Reviser are post-pilot (weeks 5–6). Matter-draft UI surface is post-Reviser. See [DECISION_LOG.md](./DECISION_LOG.md) Lock #10.
+
+## Hard constraints (do not negotiate)
+
+- **Residency binds.** No prompts, embeddings, or document content cross the county boundary. OpenAI fallback is allowlisted egress only and disabled by default in v0.1.0.
+- **Governance is foundation.** Per-matter ACL, audit rows, lineage hashes, classification at intake — all built in, not bolted on.
+- **No optimization against synthetic signal.** GEPA waits for attorney redlines. The smoke eval is plumbing, not quality.
+
+## Non-goals for v0.1.0
+
+- Matter-draft UI surface (deferred — `M` route returns 501 with `Retry-After`)
+- GEPA compile (deferred — scaffold ready, no real run)
+- Reviser, ComplianceGrader, PolicyMatcher (weeks 3–6)
+- PostHog (out — re-evaluate at week 6)
+- RunPod (out — inference stays on `bcc-ap-infer01`)
