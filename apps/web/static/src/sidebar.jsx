@@ -74,7 +74,7 @@ const NavSection = ({ label, children, action }) => (
   </div>
 );
 
-const Sidebar = ({ route, setRoute, onNew }) => {
+const Sidebar = ({ route, setRoute, onNew, user }) => {
   return (
     <aside style={{
       width: 232, flex: "none",
@@ -184,10 +184,10 @@ const Sidebar = ({ route, setRoute, onNew }) => {
           background: "linear-gradient(135deg, #8b6f47, #c89968)",
           color: "white", display: "grid", placeItems: "center",
           fontSize: 11, fontWeight: 600,
-        }}>{(window.__RLS_USER && window.__RLS_USER.initials) || "RP"}</div>
+        }}>{(user && user.initials) || "RP"}</div>
         <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(window.__RLS_USER && window.__RLS_USER.display_name) || "RLS Pilot"}</div>
-          <div style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>{(window.__RLS_USER && window.__RLS_USER.role) || "v0.1.0 · mock"}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(user && user.display_name) || "RLS Pilot"}</div>
+          <div style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>{(user && user.role) || "v0.1.0 · mock"}</div>
         </div>
         <I.Settings size={14} style={{ color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }} />
       </div>

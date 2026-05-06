@@ -17,11 +17,19 @@ function App() {
   const [route, setRoute] = React.useState("ai");
   const [detailId, setDetailId] = React.useState(null);
 
-  // Bootstrap the authenticated user once — drives the sidebar footer
-  // initials/name. Falls back to defaults if /api/me fails (Pages, no gateway).
+  // Auth state. `loading` while /api/me is in flight, then either a real
+  // user (200) or a 403 (allowlist denial). Tracked via React state so the
+  // sidebar footer + auth wall actually re-render when the fetch resolves.
+  const [user, setUser] = React.useState(null);
+  const [authState, setAuthState] = React.useState("loading"); // loading | allowed | denied | offline
   React.useEffect(() => {
-    if (!window.RLS_API) return;
-    window.RLS_API.get("/api/me").then(u => { window.__RLS_USER = u; }).catch(() => {});
+    if (!window.RLS_API) { setAuthState("offline"); return; }
+    window.RLS_API.get("/api/me")
+      .then(u => { setUser(u); setAuthState("allowed"); })
+      .catch(e => {
+        if (e && e.status === 403) setAuthState("denied");
+        else setAuthState("offline");
+      });
   }, []);
 
   // Dev hook: expose route + detail navigation only when explicitly running
@@ -72,9 +80,29 @@ function App() {
     return <StubPage route={route} go={go} />;
   })();
 
+  // Auth wall. Renders before the app surface when the gateway returns 403
+  // (allowlist denial). 'offline' = Pages or no gateway — degrade
+  // gracefully and let the static prototype render unauthenticated.
+  if (authState === "denied") {
+    return (
+      <div style={{ display: "grid", placeItems: "center", height: "100%", width: "100%", background: "var(--bg)" }}>
+        <div style={{ maxWidth: 460, padding: 32, background: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 12, textAlign: "center" }}>
+          <div style={{ width: 44, height: 44, borderRadius: 22, background: "color-mix(in oklab, var(--destructive) 15%, white)", color: "var(--destructive)", margin: "0 auto 12px", display: "grid", placeItems: "center" }}>🔒</div>
+          <div className="serif" style={{ fontSize: 20, fontWeight: 600, marginBottom: 6 }}>Access denied</div>
+          <p style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, margin: 0 }}>
+            This account is not on the RLS Apex v1 allowlist. Contact the IT/Legal owner if you should have access.
+          </p>
+          <div className="mono" style={{ marginTop: 18, fontSize: 11, color: "var(--ink-3)" }}>
+            RLS_ALLOWLIST gate · /api/me 403
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", height: "100%", width: "100%" }}>
-      <Sidebar route={route} setRoute={(r) => { setRoute(r); }} onNew={() => go("wizard")} />
+      <Sidebar route={route} setRoute={(r) => { setRoute(r); }} onNew={() => go("wizard")} user={user} />
       <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: "var(--bg)" }}>
         {page}
       </main>

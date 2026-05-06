@@ -23,6 +23,11 @@ fi
 
 export DEV_AUTH_BYPASS=1
 export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
+# Auth gate is ACTIVE in dev by default — proves the wiring.
+# The allowlisted Manatee BCC admin upn matches DEV_USER_UPN, so the
+# synthetic dev session passes. Override either var to test denials.
+export RLS_ALLOWLIST="${RLS_ALLOWLIST:-BCC\\ejarbeadm}"
+export DEV_USER_UPN="${DEV_USER_UPN:-BCC\\ejarbeadm}"
 
 exec ./.venv/bin/uvicorn apps.gateway.main:app \
   --host "${HOST:-127.0.0.1}" \
