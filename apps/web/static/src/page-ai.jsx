@@ -50,28 +50,55 @@ function StepRibbon({ steps }) {
 
 function ScoreBlock({ score, band, intent }) {
   if (score == null) return null;
+  // Liquid-glass-flavored score plate — translucent surface, color tint,
+  // layered shadows. Web-native port (no iOS API on web).
   const bandStyle = {
-    low:              { bg: "color-mix(in oklab, var(--success) 12%, white)",     fg: "var(--success)",     label: "LOW" },
-    medium:           { bg: "color-mix(in oklab, var(--warning) 12%, white)",     fg: "var(--warning)",     label: "MEDIUM" },
-    high:             { bg: "color-mix(in oklab, var(--destructive) 14%, white)", fg: "var(--destructive)", label: "HIGH" },
-    likely_rejected:  { bg: "var(--destructive)",                                  fg: "white",              label: "LIKELY REJECTED" },
-  }[band] || { bg: "var(--muted)", fg: "var(--ink-2)", label: (band || "—").toUpperCase() };
+    low:             { tint: "var(--success)",     label: "LOW",              inverted: false },
+    medium:          { tint: "var(--warning)",     label: "MEDIUM",           inverted: false },
+    high:            { tint: "var(--destructive)", label: "HIGH",             inverted: false },
+    likely_rejected: { tint: "var(--destructive)", label: "LIKELY REJECTED",  inverted: true  },
+  }[band] || { tint: "var(--ink-2)", label: (band || "—").toUpperCase(), inverted: false };
+  const tint = bandStyle.tint;
+  const inv = bandStyle.inverted;
+
+  // Inverted (likely_rejected) = solid red surface with white text.
+  // Otherwise = translucent tinted glass with tint-colored text.
+  const surfaceBg = inv
+    ? tint
+    : `linear-gradient(135deg, color-mix(in oklab, ${tint} 10%, white), color-mix(in oklab, ${tint} 4%, var(--canvas)))`;
+  const fgText = inv ? "white" : tint;
+  const ink2 = inv ? "color-mix(in oklab, white 78%, transparent)" : "var(--ink-2)";
+  const chipBg = inv ? "color-mix(in oklab, white 18%, transparent)" : tint;
+  const chipFg = inv ? "white" : "white";
+  const divider = inv ? "color-mix(in oklab, white 30%, transparent)"
+                       : `color-mix(in oklab, ${tint} 22%, transparent)`;
+
   return (
     <div style={{
-      marginTop: 22, padding: "16px 18px",
-      background: bandStyle.bg, border: `1px solid ${bandStyle.fg}`, borderRadius: 8,
-      display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 14,
+      marginTop: 22, padding: "18px 20px",
+      background: surfaceBg,
+      backdropFilter: "blur(18px) saturate(160%)",
+      WebkitBackdropFilter: "blur(18px) saturate(160%)",
+      border: `1px solid color-mix(in oklab, ${tint} ${inv ? 60 : 30}%, transparent)`,
+      borderRadius: 14,
+      boxShadow: `
+        0 1px 0 color-mix(in oklab, white ${inv ? 30 : 70}%, transparent) inset,
+        0 -1px 0 color-mix(in oklab, ${tint} 14%, transparent) inset,
+        0 14px 32px -14px color-mix(in oklab, ${tint} 38%, transparent),
+        0 2px 8px -2px rgba(0, 0, 0, 0.06)
+      `,
+      display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 16,
     }}>
       <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: bandStyle.fg, letterSpacing: 0.06, textTransform: "uppercase" }}>Rejection probability</div>
-        <div className="num" style={{ fontSize: 28, fontWeight: 700, color: bandStyle.fg, lineHeight: 1.1, marginTop: 2 }}>{score}<span style={{ fontSize: 14, fontWeight: 500, marginLeft: 2 }}>/100</span></div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: fgText, letterSpacing: 0.08, textTransform: "uppercase", opacity: inv ? 0.85 : 1 }}>Rejection probability</div>
+        <div className="num" style={{ fontSize: 32, fontWeight: 700, color: fgText, lineHeight: 1.05, marginTop: 4 }}>{score}<span style={{ fontSize: 14, fontWeight: 500, marginLeft: 2, opacity: 0.7 }}>/100</span></div>
       </div>
-      <div style={{ paddingLeft: 14, borderLeft: `1px solid ${bandStyle.fg}40` }}>
+      <div style={{ paddingLeft: 16, borderLeft: `1px solid ${divider}` }}>
         <div style={{
-          display: "inline-block", padding: "3px 10px", borderRadius: 999,
-          background: bandStyle.fg, color: bandStyle.bg, fontSize: 11, fontWeight: 700, letterSpacing: 0.08,
+          display: "inline-block", padding: "3px 11px", borderRadius: 999,
+          background: chipBg, color: chipFg, fontSize: 11, fontWeight: 700, letterSpacing: 0.08,
         }}>{bandStyle.label}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 6 }}>Classified as <span className="mono" style={{ color: bandStyle.fg, fontWeight: 600 }}>{intent || "—"}</span></div>
+        <div style={{ fontSize: 12, color: ink2, marginTop: 7 }}>Classified as <span className="mono" style={{ color: fgText, fontWeight: 600 }}>{intent || "—"}</span></div>
       </div>
     </div>
   );
@@ -89,9 +116,20 @@ function CurePath({ items, citations }) {
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
         {items.map((it, i) => (
           <li key={i} style={{
-            display: "grid", gridTemplateColumns: "28px 1fr", gap: 10,
-            padding: "10px 14px", marginTop: i ? 6 : 0,
-            background: "var(--canvas)", border: "1px solid var(--border)", borderRadius: 8,
+            display: "grid", gridTemplateColumns: "28px 1fr", gap: 12,
+            padding: "12px 16px", marginTop: i ? 8 : 0,
+            // Selective glass — translucent surface, soft inner highlight,
+            // primary-tinted shadow that ties to the Score block above.
+            background: "linear-gradient(135deg, color-mix(in oklab, var(--primary) 5%, white), var(--canvas))",
+            backdropFilter: "blur(14px) saturate(150%)",
+            WebkitBackdropFilter: "blur(14px) saturate(150%)",
+            border: "1px solid color-mix(in oklab, var(--primary) 18%, transparent)",
+            borderRadius: 12,
+            boxShadow: `
+              0 1px 0 color-mix(in oklab, white 70%, transparent) inset,
+              0 8px 20px -10px color-mix(in oklab, var(--primary) 22%, transparent),
+              0 1px 3px -1px rgba(0,0,0,0.05)
+            `,
           }}>
             <div style={{
               width: 22, height: 22, borderRadius: 11,

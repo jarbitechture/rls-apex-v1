@@ -106,7 +106,10 @@ function App() {
       <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: "var(--bg)" }}>
         {page}
       </main>
-      <TweaksPanel>
+      {/* TweaksPanel — dev-only design-token tinkerer. Gated behind
+          ?tweaks=1 so the production view doesn't render the floating
+          edge-tab. */}
+      {/\btweaks=1\b/.test(window.location.search) && <TweaksPanel>
         <TweakSection label="Primary accent" />
         <TweakColor label="Color" value={tweaks.primary} onChange={(v) => setTweak("primary", v)} />
 
@@ -129,7 +132,7 @@ function App() {
             { value: "detail", label: "RLS detail" },
           ]}
           onChange={(v) => { if (v === "detail") setDetailId("RLS-26-0141"); setRoute(v); }} />
-      </TweaksPanel>
+      </TweaksPanel>}
     </div>
   );
 }

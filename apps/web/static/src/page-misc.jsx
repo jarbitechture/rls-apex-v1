@@ -14,43 +14,124 @@ const NOTIFS = [
   { time: "May 3", urgent: false, type: "audit", id: "system", who: "System", text: "hash chain auto-verified · 14,302 entries · OK", read: true },
 ];
 
-// ── Documents (live corpus from /api/corpus) ─────────────────────
+// ── Documents — corpus library with classification + kind filters ──
+//
+// Sourced live from /api/corpus. Three filter dimensions:
+//   - q          search-within (matches source filename)
+//   - classFilt  classification: all | public_record | internal | privileged
+//   - kindFilt   source_kind: all | <kind>
+// Empty filters = show all. Reload button hits POST /api/corpus/reload.
 const Documents = ({ go }) => {
-  const [docs, setDocs] = React.useState([]);
+  const [docs, setDocs] = React.useState(null);  // null = loading
   const [err, setErr] = React.useState(null);
-  React.useEffect(() => {
-    if (!window.RLS_API) { setErr("Gateway not reachable"); return; }
-    let alive = true;
-    window.RLS_API.get("/api/corpus")
-      .then(r => { if (alive) setDocs(r.documents || []); })
-      .catch(e => { if (alive) setErr(e.message); });
-    return () => { alive = false; };
-  }, []);
-  const totalChunks = docs.reduce((n, d) => n + (d.chunks || 0), 0);
+  const [q, setQ] = React.useState("");
+  const [classFilt, setClassFilt] = React.useState("all");
+  const [kindFilt, setKindFilt] = React.useState("all");
+  const [reloading, setReloading] = React.useState(false);
+
+  async function load() {
+    if (!window.RLS_API) { setErr("Gateway not reachable"); setDocs([]); return; }
+    try {
+      const r = await window.RLS_API.get("/api/corpus");
+      setDocs(r.documents || []);
+      setErr(null);
+    } catch (e) { setErr(e.message); setDocs([]); }
+  }
+  React.useEffect(() => { load(); }, []);
+
+  async function reload() {
+    setReloading(true);
+    try { await window.RLS_API.post("/api/corpus/reload", {}); await load(); }
+    catch (e) { setErr(e.message); }
+    finally { setReloading(false); }
+  }
+
+  const all = docs || [];
+  const allKinds = Array.from(new Set(all.map(d => d.source_kind))).sort();
+  const allClasses = Array.from(new Set(all.map(d => d.classification))).sort();
+  const filtered = all.filter(d => {
+    if (classFilt !== "all" && d.classification !== classFilt) return false;
+    if (kindFilt !== "all" && d.source_kind !== kindFilt) return false;
+    if (q && !(d.source.toLowerCase().includes(q.toLowerCase()) || d.id.toLowerCase().includes(q.toLowerCase()))) return false;
+    return true;
+  });
+  const totalChunks = filtered.reduce((n, d) => n + (d.chunks || 0), 0);
+
+  // Loading skeleton
+  if (docs === null) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: 24 }}>
+        <div style={{ height: 24, width: 160, background: "var(--muted-2)", borderRadius: 4, marginBottom: 16 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          {[...Array(6)].map((_, i) => <div key={i} style={{ height: 96, background: "var(--muted-2)", borderRadius: 8, opacity: 1 - (i * 0.12) }} />)}
+        </div>
+      </div>
+    );
+  }
+
+  const ChipBtn = ({ active, onClick, children, count }) => (
+    <button onClick={onClick} style={{
+      border: `1px solid ${active ? "var(--primary)" : "var(--border)"}`,
+      background: active ? "color-mix(in oklab, var(--primary) 8%, var(--canvas))" : "var(--canvas)",
+      color: active ? "var(--primary-ink)" : "var(--ink-2)",
+      padding: "3px 10px", borderRadius: 999,
+      fontSize: 11.5, fontWeight: active ? 600 : 500,
+      cursor: "pointer", fontFamily: "var(--mono)",
+      display: "inline-flex", alignItems: "center", gap: 5,
+    }}>{children}{count != null && <span style={{ opacity: 0.7 }}>· {count}</span>}</button>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <PageHeader title="Documents" sub={`${docs.length} ingested · ${totalChunks} chunks indexed · BM25 retrieval is live`}
-        right={<Btn variant="default" size="sm" icon={<I.Eye size={13} />}>Reload index</Btn>} />
+      <PageHeader title="Documents" sub={`${filtered.length} of ${all.length} ingested · ${totalChunks} chunks indexed · BM25 retrieval is live`}
+        right={<Btn variant="default" size="sm" icon={<I.Eye size={13} />} onClick={reload} disabled={reloading}>{reloading ? "Reloading…" : "Reload index"}</Btn>} />
+
+      {/* Filter row */}
+      <div style={{ padding: "10px 24px 0 24px", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", borderBottom: "1px solid var(--border)" }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search filenames…" style={{
+          height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 5,
+          background: "var(--canvas)", fontSize: 12, color: "var(--ink)", width: 220,
+        }} />
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.06, marginRight: 4 }}>Class</span>
+          <ChipBtn active={classFilt === "all"} onClick={() => setClassFilt("all")}>all</ChipBtn>
+          {allClasses.map(c => (
+            <ChipBtn key={c} active={classFilt === c} onClick={() => setClassFilt(c)} count={all.filter(d => d.classification === c).length}>{c}</ChipBtn>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", paddingBottom: 10 }}>
+          <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.06, marginRight: 4 }}>Kind</span>
+          <ChipBtn active={kindFilt === "all"} onClick={() => setKindFilt("all")}>all</ChipBtn>
+          {allKinds.map(k => (
+            <ChipBtn key={k} active={kindFilt === k} onClick={() => setKindFilt(k)} count={all.filter(d => d.source_kind === k).length}>{k}</ChipBtn>
+          ))}
+        </div>
+      </div>
+
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
         {err && <div style={{ color: "var(--destructive)", marginBottom: 12, fontSize: 13 }}>{err}</div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-          {docs.map(d => (
+          {filtered.map(d => (
             <Card key={d.id} padding={14}>
               <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{d.id} · {d.source_kind}</div>
-              <div className="serif" style={{ fontSize: 14.5, fontWeight: 600, margin: "6px 0 8px", lineHeight: 1.35 }}>{d.source}</div>
+              <div className="serif" style={{ fontSize: 14, fontWeight: 600, margin: "6px 0 8px", lineHeight: 1.35 }}>{d.source}</div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <Pill tone={d.classification === "public_record" ? "primary" : "ghost"} dot>{d.classification}</Pill>
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{d.pages}p · {d.chunks}c · {Math.round((d.bytes || 0) / 1024)}KB</span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{d.pages}p · {d.chunks}c · {Math.round((d.bytes || 0) / 1024)}KB</span>
               </div>
               {d.chunks === 0 && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "var(--warning)" }}>⚠ no extractable text — image-only PDF</div>
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--warning)" }}>⚠ no extractable text — image-only</div>
               )}
             </Card>
           ))}
-          {!err && docs.length === 0 && (
+          {filtered.length === 0 && all.length > 0 && (
             <div style={{ color: "var(--ink-3)", fontSize: 13, fontStyle: "italic", padding: "20px 0" }}>
-              No documents ingested yet. Drop PDFs or CSVs into <code>corpus/raw/</code> and run <code>bin/ingest</code>.
+              No documents match the current filters.
+            </div>
+          )}
+          {!err && all.length === 0 && (
+            <div style={{ color: "var(--ink-3)", fontSize: 13, fontStyle: "italic", padding: "20px 0" }}>
+              No documents ingested yet. Drop files into <code>corpus/raw/</code> and run <code>bin/ingest</code>.
             </div>
           )}
         </div>

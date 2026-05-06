@@ -13,12 +13,13 @@ await page.waitForFunction(() => typeof window.__RLS_GO === "function", null, { 
 
 // Type a sole-source query, click Validate, wait for the score block to render
 await page.fill("textarea", "Can the County contract a sole-source IT vendor under §125.65 if findings are drafted concurrently?");
-await page.click("button:has-text('Validate')");
+// Click the actual primary "Validate" button, not the sidebar nav-item.
+await page.click("main button:has-text('Validate')");
 await page.waitForFunction(
   () => /Rejection probability/i.test(document.body.textContent || ""),
-  null, { timeout: 15000 },
+  null, { timeout: 20000 },
 ).catch(() => {});
-await page.waitForTimeout(5000); // let the answer + citations finish streaming
+await page.waitForTimeout(6000); // let the answer + citations finish streaming
 // scroll the result into view
 await page.evaluate(() => {
   const main = document.querySelector("main");

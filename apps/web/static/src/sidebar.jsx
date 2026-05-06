@@ -85,12 +85,11 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
       padding: "10px 14px 12px",
       height: "100%",
     }}>
-      {/* org switcher */}
-      <button style={{
+      {/* org plate — display-only, not clickable. The dropdown affordance
+          was removed since there's only one org and no menu to show. */}
+      <div style={{
         display: "flex", alignItems: "center", gap: 9,
-        height: 36, padding: "0 8px",
-        background: "transparent", border: "none",
-        borderRadius: 6, cursor: "pointer", marginBottom: 8,
+        height: 36, padding: "0 8px", marginBottom: 12,
       }}>
         <div style={{
           width: 24, height: 24, borderRadius: 5,
@@ -100,29 +99,9 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
           boxShadow: "inset 0 -1px 0 rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.18)",
         }}>MC</div>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, lineHeight: 1.15 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Manatee County</span>
-          <span style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>Legal · FY26</span>
+          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Manatee County</span>
+          <span style={{ fontSize: 11, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>RLS Apex · v0.1.0</span>
         </div>
-        <I.ChevronDown size={13} stroke={1.6} />
-      </button>
-
-      {/* search */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 7,
-        height: 28, padding: "0 9px",
-        background: "color-mix(in oklab, var(--sidebar-ink) 4%, transparent)",
-        borderRadius: 5,
-        marginBottom: 12,
-        color: "color-mix(in oklab, var(--sidebar-ink) 60%, transparent)",
-        fontSize: 12.5,
-      }}>
-        <I.Search size={13} />
-        <span style={{ flex: 1 }}>Search RLS, people…</span>
-        <span className="mono" style={{
-          fontSize: 10, padding: "1px 4px",
-          border: "1px solid color-mix(in oklab, var(--sidebar-ink) 16%, transparent)",
-          borderRadius: 3,
-        }}>⌘K</span>
       </div>
 
       {/* primary CTA — routes to Validate (the pilot's flow) */}
@@ -146,7 +125,10 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
         <NavSection>
           <NavItem icon={<I.Robot size={15} />} label="Validate" active={route === "ai"} onClick={() => setRoute("ai")} />
           <NavItem icon={<I.Folder size={15} />} label="Documents" active={route === "documents"} onClick={() => setRoute("documents")} />
-          <NavItem icon={<I.Library size={15} />} label="Precedents" active={route === "precedents"} onClick={() => setRoute("precedents")} />
+          {/* Precedents hidden — Validate's citation block already surfaces
+              the same /api/retrieve hits, so a standalone Precedents library
+              page would just duplicate. Restore once it has a different
+              shape (e.g., editorial collections). */}
         </NavSection>
       </div>
 
@@ -166,7 +148,7 @@ const Sidebar = ({ route, setRoute, onNew, user }) => {
           <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(user && user.display_name) || "RLS Pilot"}</div>
           <div style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>{(user && user.role) || "v0.1.0 · mock"}</div>
         </div>
-        <I.Settings size={14} style={{ color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }} />
+        {/* Settings gear removed — no settings surface in v0.1.0. */}
       </div>
     </aside>
   );
