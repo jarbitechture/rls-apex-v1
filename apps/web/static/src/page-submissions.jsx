@@ -72,12 +72,25 @@ const Cell = ({ children, w, align = "left", style, mono }) => (
 );
 
 const Submissions = ({ go, lens }) => {
+  // SAMPLE.submissions is the first-paint fallback; live data from the
+  // gateway lands in `items` once /api/rls resolves. On Pages (no
+  // gateway) the component stays on SAMPLE — fetch fails silently.
+  const [items, setItems] = React.useState(SAMPLE.submissions);
+  React.useEffect(() => {
+    if (!window.RLS_API) return;
+    let alive = true;
+    window.RLS_API.rls.list()
+      .then(r => { if (alive && r && r.items) setItems(r.items); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const [q, setQ] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   // `lens` lets parent routes scope the same Submissions list to a slice
   // (e.g. team="Land Use" or type="Public Records") without forking the
   // component. Lens fields applied first; status/q filter on top.
-  const lensed = SAMPLE.submissions.filter(s => {
+  const lensed = items.filter(s => {
     if (!lens || !lens.match) return true;
     return lens.match(s);
   });
@@ -93,7 +106,7 @@ const Submissions = ({ go, lens }) => {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader
         title={(lens && lens.title) || "Submissions"}
-        sub={(lens && lens.sub) || `${SAMPLE.submissions.length} matters · sorted by deadline · grouped by team`}
+        sub={(lens && lens.sub) || `${items.length} matters · sorted by deadline · grouped by team`}
         right={
           <>
             <Btn icon={<I.Eye size={13} />} variant="default" size="sm">View</Btn>

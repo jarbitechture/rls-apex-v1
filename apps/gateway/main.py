@@ -41,6 +41,15 @@ from fastapi.staticfiles import StaticFiles
 # Never enable on bcc-ap-llm01 in production.
 DEV_MODE = os.environ.get("DEV_AUTH_BYPASS") == "1"
 
+# RLS_ALLOWLIST="BCC\ejarbeadm,..."  — comma-separated UPNs (or
+# DOMAIN\sam-style strings) allowed to authenticate. Empty = no
+# allowlist (open to anyone who passes OIDC). Same gate runs in dev
+# (DEV_MODE) and prod (real Entra OIDC); the upn extraction differs
+# but the allowlist check doesn't.
+_RAW_ALLOWLIST = os.environ.get("RLS_ALLOWLIST", "").strip()
+RLS_ALLOWLIST = {x.strip() for x in _RAW_ALLOWLIST.split(",") if x.strip()}
+DEV_USER_UPN = os.environ.get("DEV_USER_UPN", "dev@local")
+
 # ─── Lifespan ─────────────────────────────────────────────────────
 
 
@@ -106,19 +115,41 @@ async def current_user(request: Request) -> dict:
     in that case — handled below.
     """
     if DEV_MODE:
+        upn = DEV_USER_UPN
+        if RLS_ALLOWLIST and upn not in RLS_ALLOWLIST:
+            raise HTTPException(status_code=403,
+                                detail=f"upn {upn!r} not in RLS_ALLOWLIST")
         return {
-            "upn": "dev@local",
-            "display_name": "Dev User",
+            "upn": upn,
+            "display_name": upn.split("@")[0].split("\\")[-1] or upn,
             "role": "general-counsel",
         }
     # TODO: extract Authorization: Bearer <token>
     # TODO: validate against OIDC_AUTHORITY (jwks cached, 5m TTL)
     # TODO: map groups → role per domain.yaml
     # TODO: handle _claim_names overage by calling Graph
+    # The RLS_ALLOWLIST check below applies once OIDC extracts the upn:
+    #   if RLS_ALLOWLIST and upn not in RLS_ALLOWLIST: raise 403
     raise HTTPException(status_code=501, detail="oidc not yet wired")
 
 
 # ─── Routes — health, query, skills, matters ──────────────────────
+
+
+@app.get("/api/me", tags=["auth"])
+async def api_me(user: dict = Depends(current_user)) -> dict:
+    """Return the authenticated user's profile so the UI can render
+    the sidebar footer / header from real identity instead of a fake
+    persona. Goes through current_user, so it also enforces the
+    RLS_ALLOWLIST gate."""
+    name = user.get("display_name") or user.get("upn") or "RLS Pilot"
+    initials = "".join(p[0].upper() for p in name.split() if p)[:2] or "RP"
+    return {
+        "upn": user.get("upn"),
+        "display_name": name,
+        "initials": initials,
+        "role": user.get("role") or "—",
+    }
 
 
 @app.get("/healthz", tags=["ops"])

@@ -140,8 +140,8 @@ const AiPage = ({ go }) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader
-        title="AI Co-pilot"
-        sub="Grounded against 214 RLS source vectors · DSPy agent modes · hash-chain lineage"
+        title="Validate"
+        sub="Pre-check a draft RLS against the County Attorney corpus before submission. Citations are real; LLM is mocked until SGLang lands."
         right={<>
           <Btn variant="default" size="sm" icon={<I.Hash size={13} />}>View lineage</Btn>
           <Btn variant="default" size="sm" icon={<I.Settings size={13} />}>Gateway settings</Btn>

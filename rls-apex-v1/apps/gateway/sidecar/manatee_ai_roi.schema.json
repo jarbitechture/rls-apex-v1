@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "EventKind": {
+      "description": "The category of user-facing action that produced this event.\n\nOperating Rule #18 (broadened 2026-05-06): events cover every user-facing\naction and tool/agent invocation, not only LLM calls. This enum is the\nprimary discriminator. `prompt_tokens` and `output_tokens` are required\nonly for LLM_CALL.",
+      "enum": [
+        "llm_call",
+        "tool_invocation",
+        "gpt_pick",
+        "project_access",
+        "file_interaction",
+        "rag_hit",
+        "license_lifecycle",
+        "headcount_attestation",
+        "feedback",
+        "escalation",
+        "training_interaction"
+      ],
+      "title": "EventKind",
+      "type": "string"
+    },
+    "RoleBand": {
+      "description": "Loaded-hourly-rate buckets. Owned by the Budget Office; mirrored here.",
+      "enum": [
+        "exec",
+        "director",
+        "manager",
+        "senior",
+        "professional",
+        "support"
+      ],
+      "title": "RoleBand",
+      "type": "string"
+    },
+    "Surface": {
+      "enum": [
+        "word",
+        "excel",
+        "outlook",
+        "teams",
+        "copilot_chat",
+        "chatgpt_web",
+        "cookbook_ui",
+        "other"
+      ],
+      "title": "Surface",
+      "type": "string"
+    },
+    "TaskType": {
+      "enum": [
+        "drafting",
+        "summarizing",
+        "data_analysis",
+        "code",
+        "search",
+        "validation"
+      ],
+      "title": "TaskType",
+      "type": "string"
+    },
+    "Tool": {
+      "enum": [
+        "copilot",
+        "chatgpt_enterprise",
+        "civic_ai",
+        "cookbook",
+        "rls_pilot",
+        "rls_apex",
+        "other"
+      ],
+      "title": "Tool",
+      "type": "string"
+    }
+  },
+  "$id": "https://manatee-ai-roi.bcc.mymanatee.org/schemas/roi_event/1.1.0",
+  "additionalProperties": false,
+  "description": "One workflow execution. Aggregation by default \u2014 no prompt content.",
+  "properties": {
+    "dept": {
+      "title": "Dept",
+      "type": "string"
+    },
+    "duration_s": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration S"
+    },
+    "event_id": {
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_kind": {
+      "$ref": "#/$defs/EventKind",
+      "default": "llm_call"
+    },
+    "extra": {
+      "additionalProperties": true,
+      "title": "Extra",
+      "type": "object"
+    },
+    "output_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Tokens"
+    },
+    "prompt_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prompt Tokens"
+    },
+    "role_band": {
+      "$ref": "#/$defs/RoleBand"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "success": {
+      "default": true,
+      "title": "Success",
+      "type": "boolean"
+    },
+    "surface": {
+      "$ref": "#/$defs/Surface",
+      "default": "other"
+    },
+    "task_type": {
+      "$ref": "#/$defs/TaskType"
+    },
+    "tool": {
+      "$ref": "#/$defs/Tool"
+    },
+    "user_id": {
+      "title": "User Id",
+      "type": "string"
+    },
+    "workflow": {
+      "title": "Workflow",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workflow",
+    "user_id",
+    "dept",
+    "role_band",
+    "task_type",
+    "tool"
+  ],
+  "title": "RoiEvent",
+  "type": "object",
+  "x-schema-version": "1.1.0"
+}

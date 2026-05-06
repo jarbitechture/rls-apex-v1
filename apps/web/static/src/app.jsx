@@ -11,8 +11,18 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [route, setRoute] = React.useState("dashboard");
+  // Default landing = Validate (route "ai"). Per the pilot's actual purpose:
+  // user pastes a draft RLS, gets a pre-submission check. Dashboard is one
+  // click away in the sidebar but no longer the entry point.
+  const [route, setRoute] = React.useState("ai");
   const [detailId, setDetailId] = React.useState(null);
+
+  // Bootstrap the authenticated user once — drives the sidebar footer
+  // initials/name. Falls back to defaults if /api/me fails (Pages, no gateway).
+  React.useEffect(() => {
+    if (!window.RLS_API) return;
+    window.RLS_API.get("/api/me").then(u => { window.__RLS_USER = u; }).catch(() => {});
+  }, []);
 
   // Dev hook: expose route + detail navigation only when explicitly running
   // UI-simplicity / verification checks. No-op in prod.
@@ -42,6 +52,7 @@ function App() {
     if (route === "detail") return <Detail id={detailId} go={go} />;
     if (route === "inbox") return <window.Inbox go={go} />;
     if (route === "drafts") return <window.Drafts go={go} />;
+    if (route === "documents") return <window.Documents go={go} />;
     if (route === "ai") return <window.AiPage go={go} />;
     if (route === "bie") return <window.Bie go={go} />;
     if (route === "ce") return <window.CodeEnforcement go={go} />;

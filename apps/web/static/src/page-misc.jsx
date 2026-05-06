@@ -14,6 +14,51 @@ const NOTIFS = [
   { time: "May 3", urgent: false, type: "audit", id: "system", who: "System", text: "hash chain auto-verified · 14,302 entries · OK", read: true },
 ];
 
+// ── Documents (live corpus from /api/corpus) ─────────────────────
+const Documents = ({ go }) => {
+  const [docs, setDocs] = React.useState([]);
+  const [err, setErr] = React.useState(null);
+  React.useEffect(() => {
+    if (!window.RLS_API) { setErr("Gateway not reachable"); return; }
+    let alive = true;
+    window.RLS_API.get("/api/corpus")
+      .then(r => { if (alive) setDocs(r.documents || []); })
+      .catch(e => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  }, []);
+  const totalChunks = docs.reduce((n, d) => n + (d.chunks || 0), 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <PageHeader title="Documents" sub={`${docs.length} ingested · ${totalChunks} chunks indexed · BM25 retrieval is live`}
+        right={<Btn variant="default" size="sm" icon={<I.Eye size={13} />}>Reload index</Btn>} />
+      <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+        {err && <div style={{ color: "var(--destructive)", marginBottom: 12, fontSize: 13 }}>{err}</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          {docs.map(d => (
+            <Card key={d.id} padding={14}>
+              <div className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{d.id} · {d.source_kind}</div>
+              <div className="serif" style={{ fontSize: 14.5, fontWeight: 600, margin: "6px 0 8px", lineHeight: 1.35 }}>{d.source}</div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <Pill tone={d.classification === "public_record" ? "primary" : "ghost"} dot>{d.classification}</Pill>
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{d.pages}p · {d.chunks}c · {Math.round((d.bytes || 0) / 1024)}KB</span>
+              </div>
+              {d.chunks === 0 && (
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--warning)" }}>⚠ no extractable text — image-only PDF</div>
+              )}
+            </Card>
+          ))}
+          {!err && docs.length === 0 && (
+            <div style={{ color: "var(--ink-3)", fontSize: 13, fontStyle: "italic", padding: "20px 0" }}>
+              No documents ingested yet. Drop PDFs or CSVs into <code>corpus/raw/</code> and run <code>bin/ingest</code>.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Inbox = ({ go }) => {
   const [tab, setTab] = React.useState("all");
   const filtered = NOTIFS.filter(n => tab === "all" || (tab === "unread" && !n.read) || (tab === "urgent" && n.urgent));
@@ -563,10 +608,30 @@ const Kpi = () => {
 
 // ── Drafts list ────────────────────────────────────────────────
 const Drafts = ({ go }) => {
-  const drafts = [
+  // Inline fallback for first paint + Pages (no gateway). Live data from
+  // /api/drafts replaces it once it lands. Field shapes differ slightly
+  // (API has `updated`/`department`; the prototype renders `lastEdit`/
+  // `type`) so we adapt at the boundary.
+  const fallback = [
     { id: "DRAFT-008", title: "STR amendment §125.66(3)(c)", lastEdit: "3s ago", completeness: 78, type: "Ordinance" },
     { id: "DRAFT-007", title: "Stormwater utility fee methodology", lastEdit: "Yesterday", completeness: 42, type: "Litigation" },
   ];
+  const [drafts, setDrafts] = React.useState(fallback);
+  React.useEffect(() => {
+    if (!window.RLS_API) return;
+    let alive = true;
+    window.RLS_API.drafts.list().then(r => {
+      if (!alive || !r || !r.items) return;
+      setDrafts(r.items.map(d => ({
+        id:           d.id,
+        title:        d.title,
+        lastEdit:     d.updated ? `updated ${d.updated}` : "—",
+        completeness: d.completeness ?? 0,
+        type:         d.department || "Draft",
+      })));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader title="Drafts" sub="Auto-saved RLS submissions in progress"
@@ -598,3 +663,4 @@ window.Policy = Policy;
 window.Precedents = Precedents;
 window.Kpi = Kpi;
 window.Drafts = Drafts;
+window.Documents = Documents;

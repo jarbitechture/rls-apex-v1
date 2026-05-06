@@ -126,7 +126,19 @@ const ActivityItem = ({ item }) =>
 
 
 const Dashboard = ({ go }) => {
-  const k = SAMPLE.dashboardKpis;
+  // Composite fetch: /api/sample returns KPIs, queue, teamLoad,
+  // compliance, submissions, incoming14, closed14 in one shot. SAMPLE
+  // is the first-paint fallback for both speed and Pages-no-gateway.
+  const [data, setData] = React.useState(SAMPLE);
+  React.useEffect(() => {
+    if (!window.RLS_API) return;
+    let alive = true;
+    window.RLS_API.get("/api/sample")
+      .then(d => { if (alive && d) setData(prev => ({ ...prev, ...d })); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const k = data.dashboardKpis;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader
@@ -144,7 +156,7 @@ const Dashboard = ({ go }) => {
       <div style={{ flex: 1, overflow: "auto", padding: 16, color: "rgb(112, 31, 31)", opacity: "9" }}>
         {/* KPI strip */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
-          <KpiTile label="Active" value={k.active} delta="+4" sparkData={SAMPLE.incoming14} sub="opened this week 18" />
+          <KpiTile label="Active" value={k.active} delta="+4" sparkData={data.incoming14} sub="opened this week 18" />
           <KpiTile label="Awaiting ack" value={k.awaitingAck} delta="+1" accent="var(--warning)" sparkData={[2, 3, 4, 3, 5, 6, 4, 5, 7, 6, 5, 4, 5, 6]} sub="median 4.1h" />
           <KpiTile label="Breaching" value={k.overdue} delta="+1" accent="var(--destructive)" sparkData={[1, 1, 2, 1, 0, 1, 2, 3, 2, 3, 2, 3, 3, 3]} sub="2 critical · 1 urgent" />
           <KpiTile label="Avg turn" value={`${k.avgTurnDays}d`} delta="-0.6" sparkData={[8.1, 7.9, 8.4, 7.7, 7.2, 7.5, 7.4]} sub="vs goal 8d" />
@@ -162,12 +174,12 @@ const Dashboard = ({ go }) => {
               <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--ink-3)" }}><span style={{ width: 8, height: 2, background: "var(--accent)" }} />Closed</span>
             </div>
           }>
-            <ThroughputChart incoming={SAMPLE.incoming14} closed={SAMPLE.closed14} />
+            <ThroughputChart incoming={data.incoming14} closed={data.closed14} />
           </Card>
 
           <Card title="Recent activity" action={<a style={{ fontSize: 11, color: "var(--primary)" }}>view all →</a>} padding={10}>
             <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingLeft: 4 }}>
-              {SAMPLE.queue.map((q, i) => <ActivityItem key={i} item={q} />)}
+              {data.queue.map((q, i) => <ActivityItem key={i} item={q} />)}
             </div>
           </Card>
         </div>
@@ -192,7 +204,7 @@ const Dashboard = ({ go }) => {
             }}>
               <span>Number</span><span>Matter</span><span>Status</span><span>Urgency</span><span style={{ textAlign: "right" }}>Deadline</span><span />
             </div>
-            {SAMPLE.submissions.slice(0, 7).map((s) => <SubmissionMiniRow key={s.id} s={s} onOpen={() => go("detail", s.id)} />)}
+            {data.submissions.slice(0, 7).map((s) => <SubmissionMiniRow key={s.id} s={s} onOpen={() => go("detail", s.id)} />)}
           </Card>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -205,11 +217,11 @@ const Dashboard = ({ go }) => {
               }}>
                 <span>Team</span><span>Open</span><span>Capacity</span><span style={{ textAlign: "right" }}>Brh</span>
               </div>
-              {SAMPLE.teamLoad.map((r) => <TeamLoadRow key={r.team} row={r} />)}
+              {data.teamLoad.map((r) => <TeamLoadRow key={r.team} row={r} />)}
             </Card>
 
             <Card title="Compliance pulse" action={<span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>30d</span>}>
-              {SAMPLE.compliancePulse.map((c) => <ComplianceRow key={c.rule} {...c} />)}
+              {data.compliancePulse.map((c) => <ComplianceRow key={c.rule} {...c} />)}
             </Card>
           </div>
         </div>

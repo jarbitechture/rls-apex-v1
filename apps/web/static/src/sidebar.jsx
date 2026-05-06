@@ -159,7 +159,8 @@ const Sidebar = ({ route, setRoute, onNew }) => {
         </NavSection>
 
         <NavSection label="Knowledge">
-          <NavItem icon={<I.Robot size={15} />} label="AI Co-pilot" active={route === "ai"} onClick={() => setRoute("ai")} />
+          <NavItem icon={<I.Robot size={15} />} label="Validate" active={route === "ai"} onClick={() => setRoute("ai")} />
+          <NavItem icon={<I.Folder size={15} />} label="Documents" active={route === "documents"} onClick={() => setRoute("documents")} />
           <NavItem icon={<I.Graph size={15} />} label="Policy Graph" active={route === "policy"} onClick={() => setRoute("policy")} />
           <NavItem icon={<I.Library size={15} />} label="Precedents" active={route === "precedents"} onClick={() => setRoute("precedents")} />
           <NavItem icon={<I.Database size={15} />} label="KPI Analytics" active={route === "kpi"} onClick={() => setRoute("kpi")} />
@@ -183,10 +184,10 @@ const Sidebar = ({ route, setRoute, onNew }) => {
           background: "linear-gradient(135deg, #8b6f47, #c89968)",
           color: "white", display: "grid", placeItems: "center",
           fontSize: 11, fontWeight: 600,
-        }}>KT</div>
+        }}>{(window.__RLS_USER && window.__RLS_USER.initials) || "RP"}</div>
         <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Karen Tran</div>
-          <div style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>Senior Counsel · Litigation</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(window.__RLS_USER && window.__RLS_USER.display_name) || "RLS Pilot"}</div>
+          <div style={{ fontSize: 10.5, color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }}>{(window.__RLS_USER && window.__RLS_USER.role) || "v0.1.0 · mock"}</div>
         </div>
         <I.Settings size={14} style={{ color: "color-mix(in oklab, var(--sidebar-ink) 55%, transparent)" }} />
       </div>

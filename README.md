@@ -1,13 +1,10 @@
 # RLS Apex v1
 
-Manatee County Request for Legal Services (RLS) AI pilot — scaffold v0.1.0.
+**Pre-submission AI validator for Manatee County Requests for Legal Services.** A county staffer pastes a draft RLS, the agent grades it against the procedure / form requirements / cited precedents, and returns a rejection-probability score plus a cure path. That's the whole pilot. Everything else (dashboard, lists, reviewer surfaces) is supporting context for that one flow.
 
-> **Status:** scaffold only. No production code, no real corpus, no live endpoints.
-> Read [`DECISION_LOG.md`](./DECISION_LOG.md) before changing anything structural.
+> **Status:** v0.1.0 scaffold. Gateway + retrieval + agent dispatcher are real and wired. The LLM call itself is mocked behind a multi-provider seam (`LLM_PROVIDER=ollama|sglang|openai|mock`) — flip it on when SGLang lands on `bcc-ap-infer01`.
 
 ## What this is
-
-The production scaffold for the RLS interaction prototype (the React app at the project root). The prototype is the design reference; this folder is what runs on county infra.
 
 ```
 Surface     React UI (lifts prototype) · Entra ID OIDC · Static Web App

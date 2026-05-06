@@ -218,6 +218,40 @@ async function run() {
     assert(lu.total <= all.total && pr.total <= all.total, "filters can't return more than unfiltered");
   });
 
+  // BUG-R14: /api/me returns the authenticated user (drives sidebar footer)
+  await expect("/api/me returns upn + display_name + initials + role", async () => {
+    const r = await get("/api/me");
+    for (const k of ["upn", "display_name", "initials", "role"]) {
+      assert(k in r, `/api/me missing "${k}"`);
+    }
+    assert(typeof r.initials === "string" && r.initials.length <= 2, "initials must be ≤2 chars");
+  });
+
+  // BUG-R15: personas stripped from /api/rls — no invented full names like "K. Tran"
+  await expect("/api/rls assignees use role labels, not invented names", async () => {
+    const r = await get("/api/rls");
+    const banned = ["K. Tran", "R. Patel", "L. Okafor", "D. Brooks", "A. Singh",
+                    "M. Hernandez", "S. Lin", "C. Nakamura", "Karen Tran"];
+    for (const item of r.items) {
+      const a = item.assignee || "";
+      for (const b of banned) {
+        assert(!a.includes(b), `invented persona "${b}" still present in assignee field`);
+      }
+    }
+  });
+
+  // BUG-R16: /api/corpus drives the Documents UI surface
+  await expect("/api/corpus returns documents the UI can render", async () => {
+    const r = await get("/api/corpus");
+    assert(r.loaded === true, "corpus must be loaded");
+    for (const d of r.documents) {
+      // Fields the Documents card needs:
+      for (const k of ["id", "source", "source_kind", "classification", "pages", "chunks", "bytes"]) {
+        assert(k in d, `doc ${d.id || "?"} missing "${k}" — Documents card render would break`);
+      }
+    }
+  });
+
   console.log("─".repeat(72));
   console.log(`${pass} pass · ${fail} fail`);
   if (fail > 0) {
