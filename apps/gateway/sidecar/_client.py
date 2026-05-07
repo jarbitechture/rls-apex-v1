@@ -48,6 +48,12 @@ EVENT_KIND_HEADCOUNT_ATTESTATION = "headcount_attestation"
 EVENT_KIND_FEEDBACK = "feedback"
 EVENT_KIND_ESCALATION = "escalation"
 EVENT_KIND_TRAINING_INTERACTION = "training_interaction"
+# ADR-007 lifecycle kinds (schema 1.2.0)
+EVENT_KIND_SESSION_START = "session_start"
+EVENT_KIND_PROMPT_RECEIVED = "prompt_received"
+EVENT_KIND_STREAM_COMPLETE = "stream_complete"
+EVENT_KIND_CITATION_SURFACED = "citation_surfaced"
+EVENT_KIND_FOLLOWUP_ACTION = "followup_action"
 
 VALID_EVENT_KINDS = frozenset({
     EVENT_KIND_LLM_CALL,
@@ -61,7 +67,28 @@ VALID_EVENT_KINDS = frozenset({
     EVENT_KIND_FEEDBACK,
     EVENT_KIND_ESCALATION,
     EVENT_KIND_TRAINING_INTERACTION,
+    EVENT_KIND_SESSION_START,
+    EVENT_KIND_PROMPT_RECEIVED,
+    EVENT_KIND_STREAM_COMPLETE,
+    EVENT_KIND_CITATION_SURFACED,
+    EVENT_KIND_FOLLOWUP_ACTION,
 })
+
+
+def new_trace_id() -> str:
+    """Generate a fresh W3C-compatible trace_id (32 lowercase hex chars).
+
+    ADR-007: each user action gets a trace_id; all events emitted during
+    that action share it for Power BI lifecycle reconstruction.
+    """
+    import os
+    return os.urandom(16).hex()
+
+
+def new_span_id() -> str:
+    """Generate a fresh W3C-compatible span_id (16 lowercase hex chars)."""
+    import os
+    return os.urandom(8).hex()
 
 
 # ─── Defaults (per spec §9 sign-off) ──────────────────────────────────────────

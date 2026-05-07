@@ -1,7 +1,7 @@
 {
   "$defs": {
     "EventKind": {
-      "description": "The category of user-facing action that produced this event.\n\nOperating Rule #18 (broadened 2026-05-06): events cover every user-facing\naction and tool/agent invocation, not only LLM calls. This enum is the\nprimary discriminator. `prompt_tokens` and `output_tokens` are required\nonly for LLM_CALL.",
+      "description": "The category of user-facing action that produced this event.\n\nOperating Rule #18 (broadened 2026-05-06): events cover every user-facing\naction and tool/agent invocation, not only LLM calls.\n\nADR-007 (2026-05-07): one user action emits N lifecycle events sharing\na single `trace_id`. The 5 lifecycle kinds (SESSION_START, PROMPT_RECEIVED,\nSTREAM_COMPLETE, CITATION_SURFACED, FOLLOWUP_ACTION) capture the full arc\nof an LLM interaction beyond the single LLM_CALL row.\n\n`prompt_tokens` and `output_tokens` are required only for LLM_CALL.",
       "enum": [
         "llm_call",
         "tool_invocation",
@@ -13,7 +13,12 @@
         "headcount_attestation",
         "feedback",
         "escalation",
-        "training_interaction"
+        "training_interaction",
+        "session_start",
+        "prompt_received",
+        "stream_complete",
+        "citation_surfaced",
+        "followup_action"
       ],
       "title": "EventKind",
       "type": "string"
@@ -71,7 +76,7 @@
       "type": "string"
     }
   },
-  "$id": "https://manatee-ai-roi.bcc.mymanatee.org/schemas/roi_event/1.1.0",
+  "$id": "https://manatee-ai-roi.bcc.mymanatee.org/schemas/roi_event/1.2.0",
   "additionalProperties": false,
   "description": "One workflow execution. Aggregation by default \u2014 no prompt content.",
   "properties": {
@@ -116,6 +121,18 @@
       "default": null,
       "title": "Output Tokens"
     },
+    "parent_event_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Event Id"
+    },
     "prompt_tokens": {
       "anyOf": [
         {
@@ -130,6 +147,18 @@
     },
     "role_band": {
       "$ref": "#/$defs/RoleBand"
+    },
+    "span_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Span Id"
     },
     "started_at": {
       "format": "date-time",
@@ -151,6 +180,18 @@
     "tool": {
       "$ref": "#/$defs/Tool"
     },
+    "trace_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trace Id"
+    },
     "user_id": {
       "title": "User Id",
       "type": "string"
@@ -170,5 +211,5 @@
   ],
   "title": "RoiEvent",
   "type": "object",
-  "x-schema-version": "1.1.0"
+  "x-schema-version": "1.2.0"
 }
