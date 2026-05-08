@@ -1,8 +1,16 @@
 export function attachValidatorRunner(store, { postValidate, debounceMs = 750 } = {}) {
   if (!postValidate) throw new Error('postValidate required');
   let timer = null;
+  let lastPayloadHash = null;
 
   store.subscribe('draft', () => {
+    // Only fire on rlsPayload changes — writes to blocking/warnings/cureSteps/
+    // lastValidated come FROM us and would otherwise cascade. Hash compare
+    // catches "nothing-actually-changed" and "we just wrote our own response back".
+    const hash = JSON.stringify(store.draft.rlsPayload);
+    if (hash === lastPayloadHash) return;
+    lastPayloadHash = hash;
+
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fire(), debounceMs);
   });
@@ -34,7 +42,7 @@ export function attachValidatorRunner(store, { postValidate, debounceMs = 750 } 
         if (s.eventLog.length > 200) s.eventLog = s.eventLog.slice(-200);
       });
     } catch (err) {
-      if (err.name === 'AbortError') return;  // newer request supersedes
+      if (err.name === 'AbortError') return;
       store.update('errorState', e => {
         e.lastApiError = String(err);
         e.validatorFailures.validate_rls_structure = { ts: Date.now(), message: String(err) };

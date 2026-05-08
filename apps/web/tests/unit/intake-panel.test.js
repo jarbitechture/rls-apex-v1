@@ -15,8 +15,13 @@ test('Draft RLS button posts to /api/intake and populates rlsPayload', async () 
   const ta = el.shadowRoot.querySelector('textarea');
   ta.value = 'permit denial';
   ta.dispatchEvent(new Event('input'));
+  await el.updateComplete;  // ensure _text setter + render cycle settles before click
   el.shadowRoot.querySelector('button.primary').click();
-  await new Promise(r => setTimeout(r, 30));
+  // Poll for the async fetch chain (mock resolves through microtask queue).
+  for (let i = 0; i < 50; i++) {
+    if (store.draft.rlsPayload.title === 'drafted') break;
+    await new Promise(r => setTimeout(r, 10));
+  }
   expect(store.draft.rlsPayload.title).toBe('drafted');
   expect(store.draft.classification.type).toBe('permit_or_zoning');
 });
