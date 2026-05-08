@@ -40,7 +40,8 @@ class ToolRoiEmitter:
         return self._breaker.status()
 
     async def emit(self, event_kind: str, payload: dict[str, Any]) -> None:
-        """Fire-and-forget — never raises."""
+        """Emit a ROI event. Raises ValueError if the event fails schema pre-flight;
+        otherwise fire-and-forget — network/breaker errors fall through to JSONL fallback."""
         full_event = {
             "event_kind": event_kind,
             "tool": self.tool_name,
