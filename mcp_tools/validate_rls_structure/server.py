@@ -22,6 +22,14 @@ from mcp_tools._lib.server import build_tool_app
 # is per-function in fastmcp 2.3.0 (no app.middleware available).
 app, roi, require_actor = build_tool_app("validate_rls_structure")
 
+_EMIT_DEFAULTS: dict = {
+    "workflow": "rls_apex.mcp.validate_rls_structure",
+    "tool": "rls_apex",
+    "task_type": "validation",
+    "dept": "DEV",
+    "role_band": "professional",
+}
+
 REQUIRED_FIELDS = {
     "subject": "MISSING_SUBJECT",
     "department": "MISSING_DEPARTMENT",
@@ -91,12 +99,19 @@ async def validate_rls_structure(rls_payload: dict) -> dict:
     Returns a serialized ValidationResult.
     """
     actor = require_actor()  # D1 contract: every tool calls require_actor() at top
-    result = validate_dict(rls_payload)
+    try:
+        result = validate_dict(rls_payload)
+    except Exception:
+        await roi.emit("tool_invocation", {
+            **_EMIT_DEFAULTS,
+            "user_id": actor.actor_id,
+            "success": False,
+        })
+        raise
     await roi.emit("tool_invocation", {
-        "actor_id": actor.actor_id,
+        **_EMIT_DEFAULTS,
+        "user_id": actor.actor_id,
         "success": True,
-        "blocking_count": len(result.blocking),
-        "warnings_count": len(result.warnings),
     })
     return result.model_dump()
 
