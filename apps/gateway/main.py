@@ -327,7 +327,32 @@ async def query(request: Request, user: dict = Depends(current_user)) -> Streami
     if DEV_MODE:
         body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
         question = (body.get("q") or "").strip() or "general procurement question"
-        return StreamingResponse(_mock_query_stream(question), media_type="text/event-stream")
+        user_id = user.get("upn", "unknown")
+        dept = user.get("dept", "DEV")
+        role_band = user.get("role_band", "professional")
+
+        async def _stream_with_roi() -> AsyncIterator[bytes]:
+            """Yield the mock SSE stream, then fire a ROI event after stream close."""
+            success = True
+            try:
+                async for chunk in _mock_query_stream(question):
+                    yield chunk
+            except Exception:
+                success = False
+                raise
+            finally:
+                emit_roi({
+                    "event_kind": "tool_invocation",
+                    "workflow": "rls_apex.query",
+                    "tool": "rls_apex",
+                    "user_id": user_id,
+                    "dept": dept,
+                    "role_band": role_band,
+                    "task_type": "data_analysis",
+                    "success": success,
+                })
+
+        return StreamingResponse(_stream_with_roi(), media_type="text/event-stream")
     # TODO: parse {q, matter_id?, k?}
     # TODO: classification check — if matter_id is privileged, additional ACL
     # TODO: call DSPy chain (uncompiled v0.1.0)
