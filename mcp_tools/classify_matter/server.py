@@ -13,6 +13,14 @@ from mcp_tools._lib.server import build_tool_app
 
 app, roi, require_actor = build_tool_app("classify_matter")
 
+_EMIT_DEFAULTS: dict = {
+    "workflow": "rls_apex.mcp.classify_matter",
+    "tool": "rls_apex",
+    "task_type": "data_analysis",
+    "dept": "DEV",
+    "role_band": "professional",
+}
+
 KEYWORDS: dict[str, list[str]] = {
     "code_enforcement_litigation": [
         r"\bNOV\b", r"\bnotice of violation\b", r"\bcode enforcement\b",
@@ -55,11 +63,19 @@ def classify_text(text: str) -> dict[str, Any]:
 @app.tool()
 async def classify_matter(draft_text: str) -> dict:
     actor = require_actor()  # D1 contract
-    result = classify_text(draft_text)
+    try:
+        result = classify_text(draft_text)
+    except Exception:
+        await roi.emit("tool_invocation", {
+            **_EMIT_DEFAULTS,
+            "user_id": actor.actor_id,
+            "success": False,
+        })
+        raise
     await roi.emit("tool_invocation", {
-        "actor_id": actor.actor_id,
+        **_EMIT_DEFAULTS,
+        "user_id": actor.actor_id,
         "success": True,
-        "type": result["type"],
     })
     return result
 
