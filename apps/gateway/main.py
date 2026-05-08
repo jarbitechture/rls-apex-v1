@@ -112,7 +112,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 print(f"[gateway] corpus loaded: {len(m['documents'])} docs · {m['total_chunks']} chunks", flush=True)
         except Exception as e:  # noqa: BLE001
             print(f"[gateway] corpus load failed: {e}", flush=True)
+    # === asyncpg pool (W2 sizing) ===
+    import os as _os
+    from apps.gateway.db.pool import create_pool, GATEWAY_POOL_SIZE
+    db_dsn = _os.environ.get(
+        "DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/rls_apex",
+    )
+    try:
+        app.state.db_pool = await create_pool(db_dsn, sizing=GATEWAY_POOL_SIZE)
+        print(f"[lifespan] db pool ready, max={GATEWAY_POOL_SIZE[1]}")
+    except Exception as e:
+        print(f"[lifespan] db pool FAILED: {e!r} — gateway running without db (some endpoints will degrade)")
+        app.state.db_pool = None
     yield
+    # === pool teardown ===
+    if getattr(app.state, "db_pool", None) is not None:
+        await app.state.db_pool.close()
     # graceful shutdown
     if _roi_client is not None:
         try:
@@ -204,7 +220,9 @@ async def healthz() -> dict:
 async def readyz() -> dict:
     """Readiness. Verifies Postgres, MinIO, SGLang, all 6 MCP tools."""
     # TODO: parallel pings to each backend, surface first failure
-    return {"ok": False, "detail": "not yet wired"}
+    from apps.gateway.db.pool import healthcheck
+    db_health = await healthcheck(app.state.db_pool) if getattr(app.state, "db_pool", None) is not None else {"db": "uninitialized"}
+    return {"status": "ready" if db_health.get("db") == "ok" else "degraded", **db_health}
 
 
 @app.post("/api/query", tags=["agent"])
