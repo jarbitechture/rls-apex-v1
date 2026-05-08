@@ -21,11 +21,34 @@ postgresql = factories.postgresql("postgresql_proc")
 
 @pytest.fixture
 async def db_pool(postgresql):
-    """Async asyncpg pool against the ephemeral test Postgres."""
+    """Async asyncpg pool against the ephemeral test Postgres, with 001_baseline applied."""
+    import os
+    import subprocess
+    import sys
     dsn = (
         f"postgresql://{postgresql.info.user}:@"
         f"{postgresql.info.host}:{postgresql.info.port}/{postgresql.info.dbname}"
     )
+    env = {
+        "DB_USER": postgresql.info.user,
+        "DB_PASSWORD": "",
+        "DB_HOST": postgresql.info.host,
+        "DB_PORT": str(postgresql.info.port),
+        "DB_NAME": postgresql.info.dbname,
+        "PATH": os.environ.get("PATH", ""),
+    }
+    # Invoke alembic via the same interpreter so it sees pytest's installed deps.
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"alembic upgrade failed (exit {result.returncode})\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=4)
     try:
         yield pool
