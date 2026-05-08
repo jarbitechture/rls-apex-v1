@@ -156,19 +156,14 @@ mcp.rls.extract_fields(draftText: string): {
 ### 4.2 Policy & corpus access
 
 ```ts
-mcp.rls.get_policy_snippets(topic: string, context?: object): Array<{
+type PolicySnippet = {
   source: "procedure" | "statute" | "policy" | "ldc";
   label: string;       // e.g., "RLS Electronic Submission Procedure §6(j)"
   citation: string;    // e.g., "Procedure 26-104.001(j)"
   text: string;
-}>
+};
 
-mcp.rls.list_rls_precedents(query: {
-  type?: string;
-  statutes?: string[];
-  freeText?: string;
-  limit?: number;
-}): Array<{
+type PrecedentHit = {
   rlsId: string;
   title: string;
   issueType: string;
@@ -176,7 +171,16 @@ mcp.rls.list_rls_precedents(query: {
   outcome: "accepted" | "rejected" | "revised";
   summary: string;
   url?: string;
-}>
+};
+
+mcp.rls.get_policy_snippets(topic: string, context?: object): PolicySnippet[]
+
+mcp.rls.list_rls_precedents(query: {
+  type?: string;
+  statutes?: string[];
+  freeText?: string;
+  limit?: number;
+}): PrecedentHit[]
 
 mcp.rls.list_rls_precedents_for(rlsId: string): PrecedentHit[]
 ```
@@ -224,34 +228,73 @@ mcp.rls.sanitize_email_body(bodyText: string): {
 ### 4.5 Lifecycle
 
 ```ts
+type RlsStatus = "Draft" | "NeedsFixes" | "ReadyForCAO"
+               | "Acknowledged" | "NeedsRevision" | "Rejected";
+
+type RlsMetadata = {
+  rlsId: string;
+  matterId: string | null;
+  classification: "privileged" | "public_record" | "confidential";
+  status: RlsStatus;
+  type: "permit_or_zoning" | "procurement" | "public_records"
+       | "code_enforcement_litigation" | "general_advisory";
+  subject: string;
+  department: string;
+  contact: { name: string; extension: string };
+  createdAt: string;     // ISO-8601
+  updatedAt: string;     // ISO-8601
+  lineageHead: string;   // sha256 of the most recent lineage event
+};
+
 mcp.rls.get_rls_metadata(rlsId: string): RlsMetadata
 
 mcp.rls.update_rls_status(
   rlsId: string,
-  status: "Draft" | "NeedsFixes" | "ReadyForCAO"
-        | "Acknowledged" | "NeedsRevision" | "Rejected",
-  reasons?: ValidationIssue[]
-): void
+  status: RlsStatus,
+  reasons?: ValidationIssue[],
+  idempotency_key?: string
+): { rlsId: string; status: RlsStatus; lineageHead: string }
 ```
 
-`update_rls_status` writes the audit row, the lineage hash, and the ROI event in one transaction (or compensating action on failure).
+Atomic write protocol for `update_rls_status` is specified in §4.6.
 
 ### 4.6 Common contract (applies to every tool)
 
-**Actor identity:** The gateway injects `actor_id`, `actor_role`, and `tenant` from the verified Entra OIDC JWT into every tool call as a header (`X-Apex-Actor-*`). Tool signatures shown above omit these for readability — they are not optional. Write operations refuse to execute without them.
+**Actor identity:** Bound into the gateway-issued JWT itself, not a side-channel header. Each per-call JWT carries `actor_id`, `actor_role`, `tenant`, and (when scoped) `rls_id` as claims alongside `aud=tool.<name>`. Tools verify the gateway's signing key and read actor identity from the verified claims only — they do not trust separate `X-Apex-Actor-*` headers. Write operations refuse to execute without all required claims. This eliminates the secondary trust channel and means the actor identity cannot be forged even if a tool ever binds beyond loopback.
 
-**Error envelope** (when an L2 breaker is open or a backend fails):
+**Co-pilot Ask scoping:** When the gateway issues a JWT for an Ask-mode tool call, it includes `rls_id` as a claim. Tools that accept an `rlsId` argument must reject calls where the argument doesn't match the JWT claim. Without `rls_id` in the claim, scope is gateway-prompt-level only and the tool may serve any matter the role allows.
+
+**Error envelope.** Two distinct shapes — input-validation errors (4xx) do not count toward circuit-breaker thresholds; backend / breaker errors (5xx) do.
 
 ```ts
-type ToolErrorResponse = {
+// HTTP 400 — input validation (does NOT increment breaker)
+type ToolValidationError = {
+  error: { code: "INVALID_INPUT"; message: string; field?: string };
+};
+
+// HTTP 503 — L2 breaker open or backend failure (DOES increment breaker)
+type ToolBreakerError = {
   error: { code: string; message: string };
   breaker_open?: boolean;     // true if the failure is a breaker-open response
   retry_after?: number;       // seconds; advisory only
-  partial?: object;           // tool-specific best-effort payload (e.g., empty list)
+  partial?: object;           // read tools only — best-effort payload (e.g., empty list)
 };
 ```
 
-Tools return HTTP 503 with this body on L2-breaker-open. Read tools include a partial result (empty list + flag); write tools return 503 with no partial.
+Read tools return 503 with `partial`; write tools return 503 with no partial.
+
+**Idempotency for write tools:** `update_rls_status` accepts an optional `idempotency_key: string` argument. The tool stores the key alongside the audit row; a repeat call with the same key returns the original result without re-writing audit / lineage / ROI rows. Required for safe retries through the breaker-closed retry policy (§11).
+
+**Atomic write protocol for `update_rls_status`** (the only multi-write tool):
+
+1. Begin Postgres transaction
+2. Insert audit row + lineage row (chained from prior `lineage_event` for this `rlsId`)
+3. Update `rls.status`
+4. Commit
+5. Emit ROI event with the same `idempotency_key` (post-commit; ROI failures fall through to JSONL fallback per Architecture A+ and never block step 1–4)
+6. On failure between step 4 and step 5, the JSONL drainer reconciles by reading post-commit audit rows on next drain
+
+Compensating action is not needed because step 5 is fire-and-forget with durable fallback. Lineage hash chain integrity is preserved by step 2's chaining and the unique constraint on `(rlsId, sequence)`.
 
 ---
 
@@ -265,6 +308,8 @@ Per the agent-workflow-designer taxonomy, the LLM loop is **orchestrator with pa
 - **Parallel branch on Validate**: `validate_rls_structure`, `check_code_enforcement_litigation` (when classification matches), `check_urgency_rules`, and `calendar.check_working_days` run concurrently. Their results merge before the LLM narrates status.
 - **Bounded handoffs**: the LLM never sees raw backend payloads. It receives the typed tool response (signatures in §4) and writes the user-facing narrative around it.
 - **No tool-to-tool calls**: tools never call each other; the gateway is the only orchestrator. Each tool is independently testable and replaceable.
+
+**Partial-failure rule for parallel fan-out:** if any tool in the parallel set returns a 503 with `breaker_open=true` (or otherwise fails), the gateway treats the merged result as `NeedsFixes` with a synthesized blocking issue (`code: "VALIDATOR_UNAVAILABLE"`, naming the failed validator). Status never flips to `ReadyForCAO` while a validator is unavailable — even if all validators that did respond passed cleanly. The LLM narrates this honestly: "Status: Needs review — `check_urgency_rules` is currently unavailable and could not confirm the urgency rules pass."
 
 ### 5.1 Intake — co-authoring, not pasting
 
@@ -552,10 +597,39 @@ The gateway already exposes `/api/health/sidecar` for the ROI breaker. Extend wi
 | 8 | Boring-official UI doesn't read as "official" to County staff | Low | Medium | Visual review with Drew + 1–2 staff during v0.2.0; iterate on copy and visual hierarchy before stakeholder demo |
 | 9 | Continuous lint feels intrusive ("paperclip effect") | Low | Medium | Default off; user enables per-field; lint events emit as `tool_invocation` so usage is measurable |
 | 10 | RS256 JWT key rotation breaks MCP calls | Low | High | Key rotation runbook in `RUNBOOK.md`; gateway accepts both old + new keys for a 30-day overlap |
+| 11 | Lineage hash chain breaks if status write succeeds but lineage row write fails (or vice versa) | Low | High | §4.6 atomic write protocol: lineage row + status update commit in one Postgres transaction; unique constraint on `(rlsId, sequence)` enforces ordering; ROI emit is post-commit and durable via JSONL fallback |
+| 12 | Ollama context window overflow (16k cap) when system prompt + 8 tools/turn + RLS payload + prior turns combine | Medium | Medium | §11 NFR caps tools at 8/turn and context at 16k; gateway compacts prior-turn tool results into summaries before including; if compaction still overflows, drop oldest tool results first and surface "context truncated" warning to LLM |
 
 ## 14. Architectural decisions
 
 Locks #13–#18 in [`DECISION_LOG.md`](../../../DECISION_LOG.md) carry the full `Decision · Rationale · Reversal cost` text for each decision in this reframe. They supersede v0.1.0 stack assumptions for L1 / L3 / L4 / L6 and do not touch Lock #2 (repo location), Lock #5 (auth), Lock #7 (MCP isolation pattern), or Lock #11 (token strategy).
+
+## 15. Deferred work — phase-tagged
+
+Items surfaced by independent review (2026-05-08) that don't belong in the spec text but must be addressed in their named phase. `writing-plans` reads this section as direct input for v0.2.0 task breakdown; `executing-plans` reads the implementation-tagged items as code-level concerns.
+
+### To `writing-plans` (v0.2.0 task breakdown)
+
+| # | Concern | Acceptance criterion |
+|---|---|---|
+| W1 | ROI emit ordering for write tools | Plan task: implement post-commit emit pattern in `update_rls_status` matching §4.6, with a smoke test that simulates gateway crash between Postgres commit and ROI POST and verifies the JSONL drainer reconciles by reading the audit row |
+| W2 | Postgres connection pool sizing | Plan task: spec pool size per service (gateway + each MCP tool) and decide PgBouncer vs direct. Target: peak 50 concurrent connections to `bcc-db-llm01` Postgres; document `max_connections` setting |
+| W3 | Retrieval engine: library-in-each-tool vs shared service | Plan decision before tool 1 (`list_rls_precedents`) build. Two options: (a) load BM25+LightRAG index in each retrieve-related MCP tool (memory cost: 2× index footprint), (b) extract a single retrieval microservice and have both tools call it (one more service to operate). Pick (a) for v0.2.0 unless index size > 2GB |
+| W4 | `Worksheet` polymorphic shape sanity check | Plan task: confirm `Matter` + `RLS` schema doesn't bake in single-table assumptions that would block adding `permit / hr_qa / budget_memo` polymorphism later. If it does, fix in the v0.2.0 schema migration |
+| W5 | Health endpoint auth | Plan decision: are `/api/health/breakers` and per-tool `/health` public on the LAN, or gated by JWT? Default: gated. Public would simplify monitoring scrapers but exposes infra state |
+
+### To `executing-plans` (implementation phase)
+
+| # | Concern | Acceptance criterion |
+|---|---|---|
+| E1 | Risk #6 runtime enforcement (citation hallucination) | Implementation: gateway validates that every citation rendered to the user's status / cure-path output references a `(rlsId, citation, source)` tuple from a tool result in the same orchestration turn. Citations not matching a turn-result tuple are stripped before render with a log warning |
+| E2 | JWT clock skew tolerance | Implementation: tools accept JWTs ±5 seconds from `iat` / `nbf` to handle clock drift between gateway and MCP tool processes on the same host |
+
+### Phase ownership
+
+- **Spec (this doc)** — closed for the v0.2 reframe direction. Future spec edits go to a new dated spec, not this file.
+- **`writing-plans`** — owns W1–W5. Each becomes a v0.2.0 task with estimate + dependency.
+- **`executing-plans`** — owns E1–E2. Each becomes a code-level acceptance check during implementation, tracked through code review.
 
 ## Review notes
 
