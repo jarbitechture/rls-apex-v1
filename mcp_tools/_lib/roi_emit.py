@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from apps.gateway.circuit import BreakerOpenError, CircuitBreaker
+from apps.gateway.sidecar._client import validate_event_for_persistence
 
 ROI_ENDPOINT = os.environ.get("ROI_EVENTS_URL", "http://localhost:8000")
 ROI_FALLBACK_PATH = Path(
@@ -44,9 +44,9 @@ class ToolRoiEmitter:
         full_event = {
             "event_kind": event_kind,
             "tool": self.tool_name,
-            "ts": time.time(),
             **payload,
         }
+        validate_event_for_persistence(full_event)
         try:
             await self._breaker.call(lambda: self._post(full_event))
         except BreakerOpenError:
