@@ -63,6 +63,7 @@ class CircuitBreaker:
         self._last_failure_ts: float | None = None
         self._last_success_ts: float | None = None
         self._consecutive_failures: int = 0
+        self._probe_in_flight: bool = False
         self._lock = asyncio.Lock()
 
     @property
@@ -79,26 +80,41 @@ class CircuitBreaker:
             self._failures.popleft()
 
     async def call(self, fn: Callable[[], T] | Callable[[], Awaitable[T]]) -> T:
-        """Execute `fn` through the breaker. `fn` may be sync or async."""
+        """Execute `fn` through the breaker. `fn` may be sync or async.
+
+        Single-probe semantics in HALF_OPEN: only one call at a time may pass
+        while recovering. Concurrent callers see BreakerOpenError until the
+        probe resolves. Spec §12.1 — "single probe".
+        """
+        is_probe = False
         async with self._lock:
             current = self.state
             if current == BreakerState.OPEN:
-                assert self._opened_at is not None
+                if self._opened_at is None:
+                    raise RuntimeError(
+                        f"breaker '{self.name}' is OPEN but _opened_at is None — invariant broken"
+                    )
                 retry_after = self.open_duration_seconds - (time.monotonic() - self._opened_at)
-                raise BreakerOpenError(self.name, retry_after)
+                raise BreakerOpenError(self.name, max(0.0, retry_after))
+            if current == BreakerState.HALF_OPEN:
+                if self._probe_in_flight:
+                    # Another probe is already in flight; don't stampede.
+                    raise BreakerOpenError(self.name, 0.0)
+                self._probe_in_flight = True
+                is_probe = True
 
         try:
             result = fn()
             if asyncio.iscoroutine(result):
                 result = await result
         except Exception:
-            await self._record_failure()
+            await self._record_failure(was_probe=is_probe)
             raise
         else:
-            await self._record_success()
+            await self._record_success(was_probe=is_probe)
             return result  # type: ignore[return-value]
 
-    async def _record_failure(self) -> None:
+    async def _record_failure(self, was_probe: bool = False) -> None:
         async with self._lock:
             now = time.monotonic()
             self._last_failure_ts = now
@@ -107,26 +123,30 @@ class CircuitBreaker:
             self._prune_failures(now)
 
             current = self.state
-            if current == BreakerState.HALF_OPEN:
-                # half-open probe failed: re-open
+            if current == BreakerState.HALF_OPEN or was_probe:
+                # half-open probe failed: re-open and release the probe slot
                 self._opened_at = now
                 self._failures.clear()
+                if was_probe:
+                    self._probe_in_flight = False
                 return
 
             if len(self._failures) >= self.failure_threshold:
                 self._opened_at = now
                 self._failures.clear()
 
-    async def _record_success(self) -> None:
+    async def _record_success(self, was_probe: bool = False) -> None:
         async with self._lock:
             now = time.monotonic()
             self._last_success_ts = now
             self._consecutive_failures = 0
 
-            if self.state == BreakerState.HALF_OPEN:
-                # probe succeeded: close
+            if self.state == BreakerState.HALF_OPEN or was_probe:
+                # probe succeeded: close and release the probe slot
                 self._opened_at = None
                 self._failures.clear()
+                if was_probe:
+                    self._probe_in_flight = False
 
     def status(self) -> dict[str, Any]:
         """Health surface shape per spec §12.4."""
