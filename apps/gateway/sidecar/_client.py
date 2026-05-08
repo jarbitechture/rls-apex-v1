@@ -24,12 +24,13 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 
 import httpx
+
+from apps.gateway.circuit import BreakerOpenError, BreakerState, CircuitBreaker
 
 
 logger = logging.getLogger("rls_apex.sidecar")
@@ -100,21 +101,7 @@ FAILURE_THRESHOLD = 5
 COOLDOWN_S = 30.0
 
 
-# ─── Breaker ──────────────────────────────────────────────────────────────────
-
-
-class BreakerState(str, Enum):
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
-
-
-@dataclass
-class _Breaker:
-    state: BreakerState = BreakerState.CLOSED
-    failures: int = 0
-    opened_at: float = 0.0
-    dropped_count: int = 0
+# ─── Drain stats (separate from breaker; tracks JSONL fallback drain) ─────────
 
 
 @dataclass
@@ -122,6 +109,14 @@ class _DrainStats:
     last_drain_ts: float | None = None
     last_drain_count: int = 0
     drained_total: int = 0
+
+
+class _PostFailedError(RuntimeError):
+    """Internal: raised by `_post` so the breaker records a failure.
+
+    The shared `CircuitBreaker.call` records failure via `except Exception` —
+    the previous bool-returning `_post` would have looked like success to it.
+    """
 
 
 # ─── Validation ───────────────────────────────────────────────────────────────
@@ -219,8 +214,22 @@ class RoiClient:
         self.timeout_s = timeout_s
         self.drain_interval_s = drain_interval_s
         self.fallback = _FallbackQueue(fallback_path)
-        self.breaker = _Breaker()
+        # Shared breaker library (spec §12.3 / Operating Rule #19).
+        # NOTE: rolling-window semantics — 5 failures inside `window_seconds`
+        # trips the breaker; previous inline impl tripped on cumulative
+        # consecutive failures. Per spec §12.1 the rolling window is the
+        # intended behavior (Gateway → manatee-ai-roi POST row).
+        # TODO(v0.2.1): single-probe enforcement in HALF_OPEN — current
+        # shared breaker lets concurrent callers stampede during recovery.
+        self._breaker = CircuitBreaker(
+            name="roi_sidecar",
+            failure_threshold=FAILURE_THRESHOLD,
+            window_seconds=COOLDOWN_S,
+            open_duration_seconds=COOLDOWN_S,
+        )
         self.stats = _DrainStats()
+        # Local counters: not the breaker's job.
+        self._dropped_events_total: int = 0
         self._client = httpx.AsyncClient(timeout=timeout_s)
         self._drain_task: asyncio.Task | None = None
 
@@ -254,7 +263,7 @@ class RoiClient:
             asyncio.create_task(self._dispatch(event))
         except RuntimeError:
             # No running event loop (e.g., shutdown). Drop fail-open.
-            self.breaker.dropped_count += 1
+            self._dropped_events_total += 1
 
     async def emit_now_async(self, event: dict) -> None:
         """Awaitable variant. Use when you want to ensure dispatch completes."""
@@ -265,10 +274,16 @@ class RoiClient:
         await self._dispatch(event)
 
     def breaker_status(self) -> dict:
+        # Field-source map:
+        #   state, consecutive_failures        ← shared CircuitBreaker.status()
+        #   dropped_events_total                ← local counter (validation drops, no-loop drops, POST failures)
+        #   fallback_count                      ← JSONL queue
+        #   last_drain_ts/_count, drained_total ← drain stats
+        bstat = self._breaker.status()
         return {
-            "state": self.breaker.state.value,
-            "consecutive_failures": self.breaker.failures,
-            "dropped_events_total": self.breaker.dropped_count,
+            "state": bstat["state"],
+            "consecutive_failures": bstat["consecutive_failures"],
+            "dropped_events_total": self._dropped_events_total,
             "fallback_count": self.fallback.count(),
             "last_drain_ts": self.stats.last_drain_ts,
             "last_drain_count": self.stats.last_drain_count,
@@ -276,14 +291,10 @@ class RoiClient:
         }
 
     async def drain_now(self) -> tuple[int, int]:
-        if self.breaker.state != BreakerState.CLOSED and not self._can_probe():
+        # The shared breaker auto-transitions OPEN→HALF_OPEN on access via the
+        # `state` property; only block when it is still hard-OPEN.
+        if self._breaker.state == BreakerState.OPEN:
             return 0, self.fallback.count()
-        # Wrap async POST as sync callback for FallbackQueue.drain
-        loop = asyncio.get_event_loop()
-
-        def _sync_post(json_line: str) -> bool:
-            return loop.run_until_complete(self._post_raw_line(json_line))
-
         # Drain inline using async fold (avoid run_until_complete inside loop)
         drained, remaining = await self._async_drain()
         self.stats.last_drain_ts = time.time()
@@ -298,46 +309,37 @@ class RoiClient:
             validate_event_for_persistence(event)
         except ValueError as exc:
             logger.debug("RoiClient: invalid event dropped pre-flight: %s", exc)
-            self.breaker.dropped_count += 1
+            self._dropped_events_total += 1
             return
 
-        if not self._can_attempt():
+        try:
+            await self._breaker.call(lambda: self._post(event))
+        except BreakerOpenError:
+            # Breaker is open — no probe attempt; queue for drain.
             self.fallback.append(event)
-            return
-
-        ok = await self._post(event)
-        if ok:
-            self._record_success()
-        else:
+        except Exception:
+            # POST failed — breaker.call already recorded the failure.
             self.fallback.append(event)
-            self._record_failure()
+            self._dropped_events_total += 1
 
-    def _can_attempt(self) -> bool:
-        if self.breaker.state == BreakerState.CLOSED:
-            return True
-        if self.breaker.state == BreakerState.OPEN:
-            if time.monotonic() - self.breaker.opened_at >= COOLDOWN_S:
-                self.breaker.state = BreakerState.HALF_OPEN
-                return True
-            return False
-        return True  # HALF_OPEN
-
-    def _can_probe(self) -> bool:
-        if self.breaker.state == BreakerState.OPEN:
-            if time.monotonic() - self.breaker.opened_at >= COOLDOWN_S:
-                self.breaker.state = BreakerState.HALF_OPEN
-                return True
-        return False
-
-    async def _post(self, event: dict) -> bool:
+    async def _post(self, event: dict) -> None:
+        """POST one event. Raises on transport error or non-2xx so the
+        shared breaker records the failure (its `call()` only treats
+        raised exceptions as failures — bool returns look like success)."""
         try:
             r = await self._client.post(f"{self.endpoint}/v1/events", json=event)
-            return 200 <= r.status_code < 300
         except (httpx.HTTPError, httpx.TimeoutException, OSError) as exc:
             logger.debug("RoiClient: POST failed: %s", exc)
-            return False
+            raise _PostFailedError(str(exc)) from exc
+        if not (200 <= r.status_code < 300):
+            raise _PostFailedError(f"HTTP {r.status_code}")
 
     async def _post_raw_line(self, json_line: str) -> bool:
+        """Drain helper — keep bool return so partial-drain bookkeeping works.
+
+        Drain is best-effort and runs on a closed breaker; we don't route it
+        through `breaker.call` (the validated event lifecycle path already
+        gates POST traffic and a failed drain just stops the loop)."""
         try:
             r = await self._client.post(
                 f"{self.endpoint}/v1/events",
@@ -374,27 +376,13 @@ class RoiClient:
         while True:
             try:
                 await asyncio.sleep(self.drain_interval_s)
-                if self.breaker.state == BreakerState.CLOSED:
+                if self._breaker.state == BreakerState.CLOSED:
                     if self.fallback.count() > 0:
                         await self.drain_now()
             except asyncio.CancelledError:
                 return
             except Exception as exc:
                 logger.debug("RoiClient: drain loop error: %s", exc)
-
-    def _record_success(self) -> None:
-        self.breaker.state = BreakerState.CLOSED
-        self.breaker.failures = 0
-
-    def _record_failure(self) -> None:
-        self.breaker.failures += 1
-        self.breaker.dropped_count += 1
-        if self.breaker.state == BreakerState.HALF_OPEN:
-            self.breaker.state = BreakerState.OPEN
-            self.breaker.opened_at = time.monotonic()
-        elif self.breaker.failures >= FAILURE_THRESHOLD:
-            self.breaker.state = BreakerState.OPEN
-            self.breaker.opened_at = time.monotonic()
 
 
 def _new_event_id() -> str:
