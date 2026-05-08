@@ -58,3 +58,6 @@ dist/
 # logs / scratch
 *.log
 scratch/
+
+# brainstorming session artifacts
+.superpowers/

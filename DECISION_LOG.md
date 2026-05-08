@@ -197,3 +197,128 @@ All locks from the planning session. Every entry is `Decision · Rationale · Re
 **Health:** `/api/health/sidecar` returns the same shape as manatee-ai-roi's `/health/sidecar` (state, consecutive_failures, dropped_events_total, fallback_count, last_drain_ts, last_drain_count, drained_total) plus rls-apex-v1 metadata (endpoint, fallback_path, mock).
 
 **Reversal cost:** Low — `_client.py` can swap transports without touching `emit_roi(event: dict)` call sites.
+
+---
+
+## v0.2.0 reframe (session 2026-05-08)
+
+Full spec: [`docs/superpowers/specs/2026-05-08-rls-apex-mcp-reframe-design.md`](./docs/superpowers/specs/2026-05-08-rls-apex-mcp-reframe-design.md).
+
+These six Locks supersede the v0.1.0 stack assumptions for L1 / L3 / L4 / L6. They do not touch Lock #2 (repo location), Lock #5 (auth), Lock #7 (MCP isolation pattern), Lock #11 (token strategy).
+
+---
+
+## Lock #13 — Apex as procedural LLM agent (MCP-first)
+
+**Decision:** Apex presents as the official RLS gate agent, not a model demo. Three sharply-separated layers:
+
+- **LLM orchestrator** — language, reasoning, drafting, narration. Calls MCP tools. Cannot override their decisions.
+- **MCP toolbox** — every County-specific rule, lookup, lifecycle action lives here as a separate systemd unit (Lock #7 isolation pattern).
+- **Apex UI** — surfaces statuses, checks, cure paths. No model guts visible.
+
+The LLM-facing API is ~12 RLS-domain tools (`classify_matter`, `extract_fields`, `validate_rls_structure`, `check_code_enforcement_litigation`, `list_rls_precedents`, etc.), not the original six generic tools (retrieve, policy-graph, ontology, lineage, docs, report-roi). The generic tools become substrate underneath.
+
+**Rationale:** The LLM as single source of truth was the load-bearing assumption that justified DSPy/GEPA scaffolding, multi-provider seams, and assistant-ui — none of which the pilot needs. Inverting to "tools decide, LLM narrates" fixes governance (rules are deterministic and auditable), portability (model swap doesn't change the surface), and scope (no optimizer scaffold day 1).
+
+**Reversal cost:** High — touches every layer. Effectively a v0.2 redirect.
+
+---
+
+## Lock #14 — Boring official UI · narrative status · co-authoring intake
+
+**Decision:**
+
+- Drop `assistant-ui`. The UI is an institutional gate, not a chat app. Build the surface from scratch using the existing `apps/web` React tree at the `f7009cb` design pass; do not migrate to Next.js again.
+- Replace numeric "55/100 REJECTION PROBABILITY" with binary status (`NeedsFixes` | `ReadyForCAO`) plus a one-sentence narrative. Internal scoring stays internal — surfaced only via the ROI layer if at all.
+- Intake is "What's going on?" free text. LLM + `classify_matter` + `extract_fields` co-author the RLS draft. The user edits a pre-populated form, not a blank form.
+- Cure path is interactive: each step has Mark Done that triggers a re-validation; status flips automatically when blocking issues clear.
+
+**Rationale:** The UI has been replaced twice already (May 6 Next.js rollback). assistant-ui was a forward bet on chat sophistication the pilot doesn't have. Numeric scoring creates false precision and is illegible to attorneys. Co-authoring is the actual value over paste-and-grade.
+
+**Reversal cost:** Medium — UI rewrite scoped to `apps/web`. The token system (Lock #11) survives.
+
+---
+
+## Lock #15 — Single inference provider for v0.2
+
+**Decision:** v0.2 runs against **Qwen2.5:7b on the existing Ollama instance on `bcc-ap-infer01`**. No SGLang. No multi-provider seam. No OpenAI fallback. The Manatee SLM swap is a config change behind the unchanged MCP surface.
+
+**Rationale:** SGLang + Qwen14B-FP8 + Ollama + OpenAI was four providers behind one seam for an LLM that's not even in the LLM-facing API of the new design (the LLM only narrates around tool outputs). One provider is enough until evidence shows it isn't. Cookbook already runs Qwen2.5 on Ollama on the same GPU; reusing that capacity halves operational complexity.
+
+**Watch-outs:**
+
+- Single GPU SPOF on `bcc-ap-infer01`. Acceptable for v0.2 pilot scale (10 concurrent, 50 RLSs/day).
+- GPU contention with cookbook. Mitigation: SGLang radix cache shares prefixes; queue at gateway if contention shows.
+
+**Reversal cost:** Low — gateway model router stays abstracted. Adding SGLang or a second provider is a config block, not a refactor.
+
+---
+
+## Lock #16 — Defer AGE · MinIO · OnBase
+
+**Decision:** v0.2 ships with Postgres 16 + pgvector only on `bcc-db-llm01`. AGE is not installed. MinIO is not installed. OnBase integration is not built. Attachments live as `bytea` columns or filesystem; policy-graph queries become recursive CTEs and FK joins.
+
+**Rationale:** AGE / MinIO / OnBase were forward bets on graph queries, large attachments, and existing legal-doc integration that the v0.2 user journey doesn't exercise. AGE specifically forces self-managed Postgres (Azure managed PG flavor doesn't support it), adding operational tax for a benefit that doesn't exist yet. domain.yaml entities make the schema portable — these can be added as new MCP tools without changing the LLM-facing surface.
+
+**Reversal cost:** Low — additive. AGE installation is a Lock #6 reactivation. MinIO is a new systemd unit + a new MCP tool. OnBase is a connector behind `mcp.docs`.
+
+---
+
+## Lock #17 — `manatee-ai-roi` is the single metrics surface
+
+**Decision:** Co-pilot's Metrics tab and any other "metrics" surface in Apex queries the `manatee-ai-roi` dataset via a gateway endpoint. No separate metrics database. No PostHog (Lock #1 stands). Internal scores or counts that aren't ROI events don't get a UI surface.
+
+Every action emits a ROI event using schema 1.1.0:
+
+- LLM call (intake, lint, brief, cure narration) → `llm_call`
+- MCP tool call (each of the 12) → `tool_invocation`
+- Precedent / policy retrieval → `rag_hit`
+- Status transition (`update_rls_status`) → `tool_invocation`
+- Cure step validation → `tool_invocation`
+- Co-pilot Ask → `llm_call` + dependent `tool_invocation`s
+
+**Rationale:** Operating Rule #18 already requires this. Locking it as a project-level Lock prevents drift. Two metrics surfaces would mean two pipelines, two access patterns, two governance reviews — and the Power BI / renewal narrative is built off `manatee-ai-roi` already.
+
+**Reversal cost:** Low — already the architectural direction. The Lock just makes it explicit so future PRs can't grow a parallel telemetry path.
+
+---
+
+## Lock #18 — Two-layer circuit breaker spec
+
+**Decision:** Operating Rule #19 (circuit-break every external dependency) is made concrete with a two-layer pattern and explicit thresholds.
+
+**Layer 1 (gateway-side)** — one breaker per outbound dependency:
+
+| Boundary | Threshold | Open | Fallback |
+|---|---|---|---|
+| Gateway → Ollama | 5 fails / 30s | 30s + probe | 503 to UI; status surface |
+| Gateway → manatee-ai-roi | 5 consecutive | 30s + probe | JSONL local fallback (already implemented) |
+| Gateway → MCP tool (×12) | 5 fails / 30s | 30s + probe | Per-tool: read=empty+flag; write=fail loud |
+
+**Layer 2 (tool-side)** — one breaker per backend each tool calls:
+
+| Tool | Backend | Fallback |
+|---|---|---|
+| `list_rls_precedents` | PG + retrieval | Empty list + `breaker_open=true` |
+| `get_policy_snippets` | PG + retrieval | Empty list + flag |
+| `update_rls_status` | PG (write) | Fail loudly |
+| `get_rls_metadata` | PG (read) | Cached + staleness flag |
+| `calendar.check_working_days` | calendar table | Conservative (assume non-working) |
+| Pure-logic tools (`validate_*`, `check_*`) | n/a | Input-validation errors as `blocking` issues |
+
+**States:** closed → (5 fails / 30s) → open → (30s) → half-open → (probe) → closed | open
+
+**Health surface:**
+
+- `GET /api/health/breakers` on gateway — all L1 breakers
+- Each MCP tool exposes `GET /health` with its L2 breakers in the same shape
+- Phoenix span attribute `breaker.state` on every spanned call
+- ROI event `success=false`, `error_class=breaker_open` when a breaker drops a call
+- Power BI tile: "% of requests with any breaker open in the last hour"
+- Alert: any breaker stays open > 5 min during business hours
+
+**Implementation note:** A small breaker library lives in `apps/gateway/circuit/` and is vendored into each MCP tool. Pattern matches the existing ROI client in `apps/gateway/sidecar/_client.py` so the operator has one mental model.
+
+**Rationale:** Lock #7 already commits to two layers; this Lock makes the layout, thresholds, and fallbacks specific enough to implement without re-arguing each one. Pure-logic tools intentionally have no breaker — their failures are input validation errors that surface through the existing `blocking` mechanism.
+
+**Reversal cost:** Medium — operational pattern. Reversing means rewriting fallback paths and the health surface. Tuning thresholds is cheap; restructuring the layout is not.
