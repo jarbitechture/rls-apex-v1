@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 
 class MatterClassification(str, Enum):
@@ -46,7 +47,7 @@ class RlsRecord(BaseModel):
     model_config = ConfigDict(frozen=False, extra="forbid")
 
     rls_id: str = Field(pattern=r"^RLS-\d{2}-\d{4,}$")
-    matter_id: str | None
+    matter_id: str | None = None
     classification: MatterClassification
     status: RlsStatus
     type: RlsType
@@ -63,9 +64,16 @@ class RlsPayload(BaseModel):
     """Wire shape sent to /api/intake and /api/validate.
 
     Subset of RlsRecord plus mutable form state; no IDs or timestamps.
+    Uses camelCase aliases on the wire, snake_case in Python. Callers must
+    pass `by_alias=True` to `model_dump()` / `model_dump_json()` to emit
+    the wire shape; default dump uses Python field names (snake_case).
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
 
     subject: str = Field(default="", max_length=50)  # spec §4.1 — trimmed at extraction
     department: str = Field(default="")
@@ -100,6 +108,6 @@ class LineageEvent(BaseModel):
 
     rls_id: str
     sequence: int = Field(ge=1)
-    prev_hash: str | None
+    prev_hash: str | None = None
     this_hash: str = Field(min_length=64, max_length=64)
     payload: dict[str, Any]
