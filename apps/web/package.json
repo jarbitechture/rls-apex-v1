@@ -1,0 +1,18 @@
+{
+  "name": "rls-apex-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:visual": "bash tests/visual/run.sh"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "happy-dom": "^15.0.0",
+    "@lit-labs/testing": "^0.5.0",
+    "@playwright/test": "^1.45.0"
+  }
+}
