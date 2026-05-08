@@ -16,6 +16,14 @@ from mcp_tools._lib.server import build_tool_app
 
 app, roi, require_actor = build_tool_app("extract_fields")
 
+_EMIT_DEFAULTS: dict = {
+    "workflow": "rls_apex.mcp.extract_fields",
+    "tool": "rls_apex",
+    "task_type": "data_analysis",
+    "dept": "DEV",
+    "role_band": "professional",
+}
+
 SUBJECT_MAX = 50
 
 
@@ -38,9 +46,18 @@ def extract_text(draft_text: str) -> dict[str, Any]:
 @app.tool()
 async def extract_fields(draft_text: str) -> dict:
     actor = require_actor()  # D1 contract
-    result = extract_text(draft_text)
+    try:
+        result = extract_text(draft_text)
+    except Exception:
+        await roi.emit("tool_invocation", {
+            **_EMIT_DEFAULTS,
+            "user_id": actor.actor_id,
+            "success": False,
+        })
+        raise
     await roi.emit("tool_invocation", {
-        "actor_id": actor.actor_id,
+        **_EMIT_DEFAULTS,
+        "user_id": actor.actor_id,
         "success": True,
     })
     return result
