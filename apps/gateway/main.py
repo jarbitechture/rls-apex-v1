@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -307,6 +307,47 @@ async def api_validate(req: _ValidateRequest, user: dict = Depends(current_user)
         "extra": {"blocking_count": len(result.blocking)},
     })
     return result.model_dump()
+
+
+# ─── CAO brief (spec §5.7, v0.2.0b stub) ──────────────────────────
+
+
+@app.get("/api/cao/brief", tags=["cao"])
+async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
+    """Canned 3-bullet brief for the CAO reviewer panel.
+    v0.2.0b stub — real content lands in v0.2.1 with the precedent corpus."""
+    body = {
+        "rlsId": rlsId,
+        "summary": [
+            "Requester seeks legal review on a permit denial; matter type appears procedural.",
+            "Applicant claims pre-existing approval predating the LDC §6.4 amendment.",
+            "Urgency framing claimed — verify against §15-day rule before CAO recommendation.",
+        ],
+        "keyFacts": [
+            "Permit denial issued under current LDC §6.4 (2024 amendment).",
+            "Applicant references RLS-25-0067 as analogous accepted vested-rights claim.",
+        ],
+        "risk": (
+            "Substantive risk if applicant's vested-rights documentation is incomplete; "
+            "structural risk minimal — RLS-25-0067 precedent is on point."
+        ),
+        "suggestedNextSteps": [
+            "Confirm pre-2024 approval document is on file before recommending acceptance.",
+            "Coordinate with Code Enforcement on litigation hold status.",
+        ],
+    }
+    emit_roi({
+        "event_kind": "tool_invocation",
+        "workflow": "rls_apex.cao_brief",
+        "tool": "rls_apex",
+        "user_id": user.get("upn", "unknown"),
+        "dept": user.get("dept", "DEV"),
+        "role_band": user.get("role_band", "professional"),
+        "task_type": "summarizing",
+        "success": True,
+        "extra": {"rls_id": rlsId},
+    })
+    return body
 
 
 @app.post("/api/query", tags=["agent"])
@@ -1217,6 +1258,14 @@ async def call_tool(tool: str, method: str, args: dict) -> dict:
     # TODO: gateway-side breaker (failure threshold, half-open behavior)
     # TODO: stamp LineageEvent before return
     raise NotImplementedError
+
+
+@app.get("/cao/{rls_id}", tags=["spa"])
+async def cao_view_passthrough(rls_id: str) -> FileResponse:
+    """SPA passthrough: any /cao/:rlsId path serves index.html so the
+    frontend router can mount <cao-view>."""
+    index_path = Path(__file__).resolve().parents[2] / "apps" / "web" / "static" / "index.html"
+    return FileResponse(index_path, media_type="text/html")
 
 
 # ─── Static mount (DEV_MODE only) ─────────────────────────────────
