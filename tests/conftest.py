@@ -12,10 +12,27 @@ from httpx import ASGITransport, AsyncClient
 
 @pytest.fixture
 async def client():
-    """Async HTTP client bound to the gateway ASGI app."""
-    from apps.gateway.main import app
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        yield c
+    """Async HTTP client bound to the gateway ASGI app.
+
+    Overrides current_user so authenticated endpoints work under TestClient
+    without requiring DEV_AUTH_BYPASS or a real Entra token. Tests that want
+    to exercise the auth gate itself should clear this override.
+    """
+    from apps.gateway.main import app, current_user
+
+    def _fake_user() -> dict:
+        return {
+            "upn": "test@local",
+            "display_name": "Test User",
+            "role": "general-counsel",
+        }
+
+    app.dependency_overrides[current_user] = _fake_user
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            yield c
+    finally:
+        app.dependency_overrides.pop(current_user, None)
 
 
 import asyncpg

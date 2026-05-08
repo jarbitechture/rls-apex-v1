@@ -33,6 +33,7 @@ from typing import AsyncIterator
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 # DEV_AUTH_BYPASS=1 turns on the local click-through:
 # - current_user returns a synthetic dev user instead of validating Entra ID
@@ -223,6 +224,45 @@ async def readyz() -> dict:
     from apps.gateway.db.pool import healthcheck
     db_health = await healthcheck(app.state.db_pool) if getattr(app.state, "db_pool", None) is not None else {"db": "uninitialized"}
     return {"status": "ready" if db_health.get("db") == "ok" else "degraded", **db_health}
+
+
+# ─── Intake (spec §5.1) ───────────────────────────────────────────
+
+
+class IntakeRequest(BaseModel):
+    """Free-text intake body. 1..10k chars; pydantic rejects empty as 422."""
+
+    text: str = Field(min_length=1, max_length=10_000)
+
+
+@app.post("/api/intake", tags=["intake"])
+async def api_intake(req: IntakeRequest, user: dict = Depends(current_user)) -> dict:
+    """Free-text → classify_matter + extract_fields → assembled rlsPayload (spec §5.1).
+
+    v0.2.0a calls the MCP tools as in-process Python imports (the underlying
+    `classify_text` / `extract_text` helpers, bypassing the FastMCP wrapper).
+    The systemd-unit-per-tool deployment is v0.2.0b infra.
+    """
+    from mcp_tools.classify_matter.server import classify_text
+    from mcp_tools.extract_fields.server import extract_text
+
+    classification = classify_text(req.text)
+    extracted = extract_text(req.text)
+    rls_payload = {
+        **extracted,
+        "type": classification["type"],
+    }
+
+    emit_roi({
+        "event_kind": "llm_call",  # intake is the LLM-orchestrated entry, even when mocked
+        "tool": "api_intake",
+        "user_id": user.get("upn", "unknown"),
+        "success": True,
+    })
+    return {
+        "classification": classification,
+        "rlsPayload": rls_payload,
+    }
 
 
 @app.post("/api/query", tags=["agent"])
