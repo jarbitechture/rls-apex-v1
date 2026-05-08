@@ -88,10 +88,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             fallback_path=_ROI_FALLBACK_PATH,
         )
         await _roi_client.start_drain_loop()
+        # Also expose on app.state so /api/health/breakers can read it
+        # without reaching into module globals (W5 / spec §12.4).
+        app.state.roi_client = _roi_client
     except Exception as exc:  # noqa: BLE001
         # Telemetry must never block boot. Log and continue without sidecar.
         print(f"[gateway] ROI client init failed (continuing): {exc}", flush=True)
         _roi_client = None
+        app.state.roi_client = None
     if DEV_MODE:
         # Corpus retrieval is part of the build, not optional. Load on
         # startup; if no index exists, auto-ingest from corpus/raw/. If
@@ -611,6 +615,55 @@ async def recent_feedback(user: dict = Depends(current_user)) -> dict:
         return {"items": []}
     lines = _FEEDBACK_PATH.read_text().splitlines()[-10:][::-1]
     return {"items": [json.loads(l) for l in lines if l.strip()]}
+
+
+# Defaults for the synthesized ROI breaker on the /api/health/breakers
+# fallback path. Mirrored from apps/gateway/sidecar/_client.py so the
+# fallback shape matches the live one when the client is absent.
+_BREAKER_FAILURE_THRESHOLD = 5
+_BREAKER_COOLDOWN_S = 30.0
+
+
+@app.get("/api/health/breakers", tags=["ops"])
+async def api_health_breakers(user: dict = Depends(current_user)) -> dict:
+    """Aggregated L1 breaker states (spec §12.4).
+
+    W5 (spec §15): gated by JWT in v0.2.0a. Privileged-LAN, but breaker
+    state still leaks infra topology, so we authenticate.
+
+    v0.2.0a only surfaces the ROI sidecar L1 breaker — MCP tools run
+    in-process (Python imports), so there's no L1 breaker between the
+    gateway and the tool. When transport flips to HTTP in v0.2.0b, each
+    per-tool breaker registers here.
+    """
+    breakers: list[dict] = []
+
+    # ROI sidecar breaker (L1). Read from app.state first; fall back to the
+    # module global so tests that don't trigger lifespan still see something.
+    roi_client = getattr(app.state, "roi_client", None) or _roi_client
+    if roi_client is not None and hasattr(roi_client, "_breaker"):
+        breakers.append(roi_client._breaker.status())
+    else:
+        # Test/dev environments where lifespan didn't init the client:
+        # synthesize a CLOSED breaker so the surface still tells the truth
+        # ("nothing is open") rather than 500ing.
+        from apps.gateway.circuit import CircuitBreaker
+
+        synth = CircuitBreaker(
+            name="roi_sidecar",
+            failure_threshold=_BREAKER_FAILURE_THRESHOLD,
+            window_seconds=_BREAKER_COOLDOWN_S,
+            open_duration_seconds=_BREAKER_COOLDOWN_S,
+        )
+        breakers.append(synth.status())
+
+    return {
+        "breakers": breakers,
+        "note": (
+            "v0.2.0a uses in-process MCP imports; per-tool L1 breakers "
+            "register here when transport flips to HTTP in v0.2.0b."
+        ),
+    }
 
 
 @app.get("/api/health/sidecar", tags=["ops"])
