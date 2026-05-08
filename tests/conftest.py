@@ -25,6 +25,8 @@ async def client():
             "upn": "test@local",
             "display_name": "Test User",
             "role": "general-counsel",
+            "dept": "DEV",
+            "role_band": "professional",
         }
 
     app.dependency_overrides[current_user] = _fake_user

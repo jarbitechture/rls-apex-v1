@@ -175,6 +175,11 @@ async def current_user(request: Request) -> dict:
             "upn": upn,
             "display_name": upn.split("@")[0].split("\\")[-1] or upn,
             "role": "general-counsel",
+            # Placeholder values until OIDC claim mapping is wired (see TODO at lines ~179-184).
+            # `dept` is a free string; `role_band` must be one of the schema enum buckets
+            # (exec|director|manager|senior|professional|support — no "unknown").
+            "dept": "DEV",
+            "role_band": "professional",
         }
     # TODO: extract Authorization: Bearer <token>
     # TODO: validate against OIDC_AUTHORITY (jwks cached, 5m TTL)
@@ -259,9 +264,17 @@ async def api_intake(req: IntakeRequest, user: dict = Depends(current_user)) -> 
 
     emit_roi({
         "event_kind": "llm_call",  # intake is the LLM-orchestrated entry, even when mocked
-        "tool": "api_intake",
+        "workflow": "rls_apex.intake",
+        "tool": "rls_apex",
         "user_id": user.get("upn", "unknown"),
+        "dept": user.get("dept", "DEV"),
+        "role_band": user.get("role_band", "professional"),
+        "task_type": "data_analysis",
         "success": True,
+        # TODO(v0.2.1 DSPy wiring): replace 0s with chain.forward() usage metadata.
+        # Until then, llm_call validator requires both fields not-None — 0 satisfies it.
+        "prompt_tokens": 0,
+        "output_tokens": 0,
     })
     return {
         "classification": classification,
@@ -284,10 +297,14 @@ async def api_validate(req: _ValidateRequest, user: dict = Depends(current_user)
     result = validate_dict(req.rlsPayload)
     emit_roi({
         "event_kind": "tool_invocation",
-        "tool": "validate_rls_structure",
+        "workflow": "rls_apex.validate",
+        "tool": "rls_apex",
         "user_id": user.get("upn", "unknown"),
+        "dept": user.get("dept", "DEV"),
+        "role_band": user.get("role_band", "professional"),
+        "task_type": "validation",
         "success": True,
-        "blocking_count": len(result.blocking),
+        "extra": {"blocking_count": len(result.blocking)},
     })
     return result.model_dump()
 
@@ -1076,7 +1093,7 @@ async def agent_dispatch(request: Request, user: dict = Depends(current_user)) -
             "event_kind": "llm_call",
             "workflow": f"rls_apex.agent.{kind}",
             "user_id": user.get("upn", "unknown"),
-            "dept": user.get("dept", "County Attorney"),
+            "dept": user.get("dept", "DEV"),
             "role_band": user.get("role_band", "professional"),
             "task_type": "search",
             "tool": "rls_apex",
