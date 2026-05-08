@@ -265,6 +265,29 @@ async def api_intake(req: IntakeRequest, user: dict = Depends(current_user)) -> 
     }
 
 
+# ─── Validate (spec §5.4) ─────────────────────────────────────────
+
+
+class _ValidateRequest(BaseModel):
+    rlsPayload: dict
+
+
+@app.post("/api/validate", tags=["intake"])
+async def api_validate(req: _ValidateRequest, user: dict = Depends(current_user)) -> dict:
+    """Run validate_rls_structure against the supplied payload (spec §5.4)."""
+    from mcp_tools.validate_rls_structure.server import validate_dict
+
+    result = validate_dict(req.rlsPayload)
+    emit_roi({
+        "event_kind": "tool_invocation",
+        "tool": "validate_rls_structure",
+        "user_id": user.get("upn", "unknown"),
+        "success": True,
+        "blocking_count": len(result.blocking),
+    })
+    return result.model_dump()
+
+
 @app.post("/api/query", tags=["agent"])
 async def query(request: Request, user: dict = Depends(current_user)) -> StreamingResponse:
     """Run the PrecedentRetriever chain over the user's question.
