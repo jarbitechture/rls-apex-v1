@@ -39,6 +39,10 @@ apps/web/src/_generated/
 !.env.example
 *.pem
 *.key
+# TEST-ONLY RSA keypair for mcp_tools/_lib JWT-verify unit tests.
+# Marked test-only in tests/fixtures/README.md; safe to track.
+!tests/fixtures/test_rsa.pem
+!tests/fixtures/test_rsa.pub
 
 # python
 __pycache__/
