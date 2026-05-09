@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="RLS Apex Gateway",
-    version="0.1.0",
+    version="0.2.0b",
     lifespan=lifespan,
     docs_url="/internal/docs",  # gated by OIDC + admin role in production
 )
@@ -266,6 +266,7 @@ async def api_intake(req: IntakeRequest, user: dict = Depends(current_user)) -> 
         "event_kind": "llm_call",  # intake is the LLM-orchestrated entry, even when mocked
         "workflow": "rls_apex.intake",
         "tool": "rls_apex",
+        "surface": "other",
         "user_id": user.get("upn", "unknown"),
         "dept": user.get("dept", "DEV"),
         "role_band": user.get("role_band", "professional"),
@@ -299,6 +300,7 @@ async def api_validate(req: _ValidateRequest, user: dict = Depends(current_user)
         "event_kind": "tool_invocation",
         "workflow": "rls_apex.validate",
         "tool": "rls_apex",
+        "surface": "other",
         "user_id": user.get("upn", "unknown"),
         "dept": user.get("dept", "DEV"),
         "role_band": user.get("role_band", "professional"),
@@ -340,6 +342,7 @@ async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
         "event_kind": "tool_invocation",
         "workflow": "rls_apex.cao_brief",
         "tool": "rls_apex",
+        "surface": "other",
         "user_id": user.get("upn", "unknown"),
         "dept": user.get("dept", "DEV"),
         "role_band": user.get("role_band", "professional"),
@@ -386,6 +389,7 @@ async def query(request: Request, user: dict = Depends(current_user)) -> Streami
                     "event_kind": "tool_invocation",
                     "workflow": "rls_apex.query",
                     "tool": "rls_apex",
+                    "surface": "other",
                     "user_id": user_id,
                     "dept": dept,
                     "role_band": role_band,
