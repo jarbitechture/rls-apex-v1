@@ -1275,7 +1275,15 @@ async def cao_view_passthrough(rls_id: str) -> FileResponse:
 
 if DEV_MODE:
     _web_root = Path(__file__).resolve().parents[2] / "apps" / "web" / "static"
+    _styles_root = Path(__file__).resolve().parents[2] / "apps" / "web" / "styles"
     if _web_root.exists():
+        # /static/* and /styles/* mounted BEFORE / so the root mount doesn't shadow them.
+        # /cao/{rls_id} route is already registered above; FastAPI matches routes in
+        # registration order and mounts are checked in registration order, so the
+        # @app.get("/cao/{rls_id}") wins over the root mount for those paths.
+        app.mount("/static", StaticFiles(directory=str(_web_root)), name="static")
+        if _styles_root.exists():
+            app.mount("/styles", StaticFiles(directory=str(_styles_root)), name="styles")
         app.mount("/", StaticFiles(directory=str(_web_root), html=True), name="web")
 
 
