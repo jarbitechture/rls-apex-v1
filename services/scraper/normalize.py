@@ -56,11 +56,11 @@ def chunk_html_section(
     chunks: list[Chunk] = []
 
     # Parse section number out of section_path (last "§X.Y" pattern)
-    section_num_match = re.search(r"§([\d.]+)", section_path)
+    section_num_match = re.search(r"§\s*([\d.]+)", section_path)
     section_num = section_num_match.group(1) if section_num_match else None
 
     for p in paragraphs:
-        raw_text = p.get_text(strip=True)
+        raw_text = p.get_text(" ", strip=True)
         if not raw_text:
             continue
 

@@ -56,3 +56,20 @@ def test_chunker_sha256_is_64_hex():
 def test_chunker_handles_empty_section():
     chunks = chunk_html_section("<div></div>", "x", "ldc", "Chapter 6 / §6.4", "Manatee LDC", 2024)
     assert chunks == []
+
+
+def test_chunker_preserves_word_boundaries_around_inline_tags():
+    """Bug #1 regression: inline <em>/<strong>/<a> tags must not eat inter-word spaces."""
+    html = '<div class="section"><p>(a) The <em>applicant</em> shall comply.</p></div>'
+    chunks = chunk_html_section(html, "x", "ldc", "Chapter 6 / §6.4", "M", 2024)
+    assert len(chunks) == 1
+    assert chunks[0].body == "The applicant shall comply."
+
+
+def test_chunker_handles_section_path_with_space_after_section_sign():
+    """Bug #2 regression: section_path 'Chapter 6 / § 6.4' (Municode default) must produce a §6.4 citation."""
+    html = '<div class="section"><p>(a) Body text.</p></div>'
+    chunks = chunk_html_section(html, "x", "ldc", "Chapter 6 / § 6.4", "M", 2024)
+    assert len(chunks) == 1
+    assert chunks[0].section_path == "Chapter 6 / § 6.4 / (a)"
+    assert "§6.4(a)" in chunks[0].citation, f"got: {chunks[0].citation!r}"
