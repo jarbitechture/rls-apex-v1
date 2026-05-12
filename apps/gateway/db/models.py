@@ -10,11 +10,12 @@ hand-syncing here.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -111,3 +112,45 @@ class LineageEvent(BaseModel):
     prev_hash: str | None = None
     this_hash: str = Field(min_length=64, max_length=64)
     payload: dict[str, Any]
+
+
+SourceType = Literal[
+    "ldc",
+    "ordinance",
+    "fl_ag_opinion",
+    "internal_opinion",
+    "procedure",
+    "calendar",
+]
+
+
+class CorpusChunk(BaseModel):
+    """Versioned corpus chunk — matches alembic corpus_chunks table.
+
+    v0.2.1a Stream A produces these (scraped LDC + ordinances + FL AG opinions
+    + calendar holidays); Stream B writes redacted internal_opinion rows;
+    Stream C reads via hybrid retrieval. valid_from / valid_to is the
+    point-in-time range (ADR-002).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int | None = None
+    source_id: str
+    source_type: SourceType
+    section_path: str
+    citation: str
+    body: str
+    sha256: Annotated[str, Field(min_length=64, max_length=64)]
+    valid_from: datetime
+    valid_to: datetime | None = None
+    embedding: list[float] | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+
+    @field_validator("sha256")
+    @classmethod
+    def _sha256_hex(cls, v: str) -> str:
+        if not re.fullmatch(r"[0-9a-f]{64}", v):
+            raise ValueError("sha256 must be 64 lowercase hex chars")
+        return v
