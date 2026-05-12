@@ -1,0 +1,17 @@
+{
+  "year": 2026,
+  "source": "Manatee County HR — 2026 observed holidays (per Plan A Task 9 spec W6)",
+  "holidays": [
+    {"date": "2026-01-01", "name": "New Year's Day"},
+    {"date": "2026-01-19", "name": "MLK Day"},
+    {"date": "2026-02-16", "name": "Presidents Day"},
+    {"date": "2026-05-25", "name": "Memorial Day"},
+    {"date": "2026-07-03", "name": "Independence Day observed"},
+    {"date": "2026-09-07", "name": "Labor Day"},
+    {"date": "2026-11-11", "name": "Veterans Day"},
+    {"date": "2026-11-26", "name": "Thanksgiving"},
+    {"date": "2026-11-27", "name": "Day after Thanksgiving"},
+    {"date": "2026-12-24", "name": "Christmas Eve"},
+    {"date": "2026-12-25", "name": "Christmas Day"}
+  ]
+}
