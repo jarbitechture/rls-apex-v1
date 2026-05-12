@@ -34,7 +34,11 @@ def test_source_type_rejects_unknown():
         )
 
 
-def test_sha256_must_be_64_hex():
+@pytest.mark.parametrize("bad_sha256", [
+    "too-short",       # exercises Pydantic length gate
+    "z" * 64,          # exercises hex regex in @field_validator (z is not hex)
+])
+def test_sha256_rejects_invalid(bad_sha256):
     with pytest.raises(ValueError, match="sha256"):
         CorpusChunk(
             source_id="x",
@@ -42,6 +46,6 @@ def test_sha256_must_be_64_hex():
             section_path="x",
             citation="x",
             body="x",
-            sha256="too-short",
+            sha256=bad_sha256,
             valid_from=datetime.now(timezone.utc),
         )
