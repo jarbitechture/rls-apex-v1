@@ -62,3 +62,24 @@ async def test_point_in_time_query_returns_correct_version(fresh_db):
     hits = await query_at_time(fresh_db, source_id="s1", at=anchor)
     assert len(hits) == 1
     assert hits[0]["sha256"] == "a"*64
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_mixed_branches_in_one_call(fresh_db):
+    """One upsert_chunks call mixing all 3 branches — assert counter dict."""
+    # Seed: one existing row that will stay unchanged + one that will be superseded
+    existing_unchanged = Chunk(body="x", source_id="s1", source_type="ldc",
+                               section_path="p_unchanged", citation="c1", sha256="a"*64)
+    existing_to_supersede = Chunk(body="old", source_id="s1", source_type="ldc",
+                                  section_path="p_supersede", citation="c1", sha256="b"*64)
+    await upsert_chunks(fresh_db, [existing_unchanged, existing_to_supersede])
+
+    # Now upsert: the unchanged one (same sha), a new sha for the supersede entity,
+    # and a brand-new entity
+    brand_new = Chunk(body="new!", source_id="s1", source_type="ldc",
+                      section_path="p_added", citation="c1", sha256="c"*64)
+    new_sha_for_supersede = Chunk(body="new", source_id="s1", source_type="ldc",
+                                  section_path="p_supersede", citation="c1", sha256="d"*64)
+    result = await upsert_chunks(fresh_db, [existing_unchanged, new_sha_for_supersede, brand_new])
+    assert result == {"added": 1, "superseded": 1, "unchanged": 1}, f"got: {result}"
