@@ -1,0 +1,10 @@
+[Unit]
+Description=RLS Apex weekly scrape job timer
+
+[Timer]
+OnCalendar=Sun 02:00
+Persistent=true
+Unit=scraper-run.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=RLS Apex Scraper Service (FastAPI /health on 30200)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=rls-apex
+Group=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+Environment="PATH=/opt/rls-apex-v1/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/etc/rls-apex-v1/scraper.env
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -m uvicorn services.scraper.service:app --host 127.0.0.1 --port 30200
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

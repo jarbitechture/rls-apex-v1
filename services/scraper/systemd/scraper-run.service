@@ -1,0 +1,16 @@
+[Unit]
+Description=RLS Apex one-shot scrape job (run_scrape_job)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=rls-apex
+Group=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+Environment="PATH=/opt/rls-apex-v1/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/etc/rls-apex-v1/scraper.env
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -c "import asyncio; from services.scraper.service import run_scrape_job; r = asyncio.run(run_scrape_job()); print(r)"
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=3600
