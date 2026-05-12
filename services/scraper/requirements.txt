@@ -1,0 +1,7 @@
+requests==2.32.3
+beautifulsoup4==4.12.3
+pdfminer.six==20240706
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+asyncpg==0.30.0
+pydantic==2.9.2
