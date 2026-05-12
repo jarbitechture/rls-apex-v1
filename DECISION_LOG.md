@@ -322,3 +322,22 @@ Every action emits a ROI event using schema 1.1.0:
 **Rationale:** Lock #7 already commits to two layers; this Lock makes the layout, thresholds, and fallbacks specific enough to implement without re-arguing each one. Pure-logic tools intentionally have no breaker — their failures are input validation errors that surface through the existing `blocking` mechanism.
 
 **Reversal cost:** Medium — operational pattern. Reversing means rewriting fallback paths and the health surface. Tuning thresholds is cheap; restructuring the layout is not.
+
+---
+
+## Lock #19 — `/api/query` is a validator, not a generator
+
+**Decision:** rls-apex-v1 is a validator. Structured intake in (`RlsPayload` via `/api/intake`), critique with citations + rejection-probability score out (via `/api/query`). The LLM grades the user's draft RLS against retrieved procedure / form requirements / cited precedents and emits a cure path. It does NOT write packet prose. No packet artifact exists; therefore no packet footer.
+
+**Implications:**
+- `/api/query` response shape is structured critique (rejection probability + blocking gaps + cure-path tokens), not free-form packet text
+- TAC-03 refusal contract triggers when retrieval returns zero relevant chunks: "insufficient precedent to grade" — NOT "won't generate"
+- TAC-03 sidecar emit uses `event_kind="escalation"` (closest valid kind in EventKind enum) with `extra={"refusal_reason": "no_grounding"}`. `event_kind="refusal"` is NOT in the schema.
+- TAC-06 (packet disclaimer footer) is dropped from scope — no packet exists to footer
+- TAC-02 banner copy ("does not provide legal advice. does not cite case law.") is the canonical UX hedge across the validator surface
+- Plan C retrieval feeds the critique prompt
+- Plan D L1-L14 are deterministic validators of the user's intake fields (not of LLM output)
+
+**Rationale:** README §"What this is" already says "grades [an RLS] against procedure / form requirements / cited precedents, and returns a rejection-probability score plus a cure path." Reframe spec (2026-05-08) locked "MCP-first procedural agent." `/api/intake` accepts structured `RlsPayload`, not user paste. Plans A/C/D are coherent with validator framing. The 2026-05-11 tactical work order (TAC-03/06) leaned generator and conflicted with the actual code surfaces, file paths, and schema enum — `event_kind="refusal"` is not in the EventKind enum; `apps/gateway/handlers/generate.py` doesn't exist; no packet-generation prompt or endpoint exists. Generator framing also shifts liability (drafting prose resembles practicing law without license) — county legal staff want critique, not generation.
+
+**Reversal cost:** Medium — flipping to generator requires (a) a new prompt artifact + packet-generation endpoint, (b) the packet footer surface (TAC-06), (c) the disclaimer-shown response field, (d) a different L1-L14 target (LLM output instead of user intake). The validator-direction code (Plans A/C/D + existing /api/query streaming) does NOT need to be undone first.
