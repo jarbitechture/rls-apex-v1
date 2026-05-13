@@ -83,7 +83,7 @@ async def smoke_conn(db_pool, postgresql):
         port=postgresql.info.port,
         database=postgresql.info.dbname,
     )
-    await conn.execute("TRUNCATE corpus_chunks")
+    await conn.execute("TRUNCATE corpus_chunks CASCADE")
     try:
         yield conn
     finally:

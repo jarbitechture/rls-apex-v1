@@ -13,7 +13,7 @@ from services.scraper.persist import upsert_chunks, query_at_time
 async def fresh_db(db_pool):
     """Acquire an asyncpg connection from the migrated db_pool; truncate corpus_chunks."""
     async with db_pool.acquire() as conn:
-        await conn.execute("TRUNCATE TABLE corpus_chunks")
+        await conn.execute("TRUNCATE TABLE corpus_chunks CASCADE")
         yield conn
 
 

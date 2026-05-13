@@ -39,7 +39,7 @@ async def standalone_conn(db_pool, postgresql):
     )
     # Start each test from a clean corpus_chunks table — orchestrator's `added`
     # count is what we assert; pre-existing rows would skew it.
-    await conn.execute("TRUNCATE corpus_chunks")
+    await conn.execute("TRUNCATE corpus_chunks CASCADE")
     try:
         yield conn
     finally:
