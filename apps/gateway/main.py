@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -447,20 +447,40 @@ async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
     return body
 
 
+class QueryRefusalResponse(BaseModel):
+    """TAC-03 / Lock #19: validator refuses to grade when retrieval yields
+    zero relevant chunks. Returned as HTTP 200 + JSON (not 4xx — refusal is
+    a deliberate semantic response, not a client error).
+    """
+    refused: bool = Field(default=True)
+    reason: str = Field(default="no_grounding")
+    message: str
+
+
+_REFUSAL_MESSAGE = (
+    "No matching precedent or procedural authority was found in the corpus for "
+    "this draft. The RLS Apex validator only grades drafts it can ground in "
+    "cited precedent — without a match it cannot return a rejection-probability "
+    "score or cure path. Add specifics (statute cite, RLS number, or "
+    "fact-pattern keywords) and resubmit, or route this question to a county "
+    "attorney directly."
+)
+
+
 @app.post("/api/query", tags=["agent"])
-async def query(request: Request, user: dict = Depends(current_user)) -> StreamingResponse:
-    """Run the PrecedentRetriever chain over the user's question.
+async def query(request: Request, user: dict = Depends(current_user)):
+    """Validator surface (Lock #19). Grades the user's draft against
+    retrieved procedure/form requirements/cited precedents.
 
-    Streams Server-Sent Events:
-      • event: token       — incremental decode tokens
-      • event: citation    — Citation entity rendered inline (D-014)
-      • event: lineage     — lineage IDs as they're stamped
-      • event: done        — final state with token counts for ROI
+    Two response modes:
+      • Grounded — happy path. Streams SSE: step / token / citation / done.
+      • Refused  — HTTP 200 JSON `{refused, reason, message}` when retrieval
+                   yields zero relevant chunks (TAC-03). No tokens streamed.
 
-    Guardrails enforced before stream completes:
-      1. No legal advice classifier on final output
-      2. ≥ 1 citation present
-      3. Lineage stamp present
+    Guardrails on the streamed path:
+      1. ≥ 1 citation present (enforced by the retrieval gate above)
+      2. Lineage stamp emitted in `done`
+      3. Token counts captured for ROI
     """
     if DEV_MODE:
         body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -469,11 +489,42 @@ async def query(request: Request, user: dict = Depends(current_user)) -> Streami
         dept = user.get("dept", "DEV")
         role_band = user.get("role_band", "professional")
 
+        # ── TAC-03 refusal gate (runs BEFORE any LLM call) ─────────────
+        # Lock #19: no grounding → refuse. Retrieval failures are treated
+        # as no-grounding for the user-facing response; the ROI event
+        # still emits success=False so ops can see them. Rule #18:
+        # telemetry never blocks the user-facing action.
+        try:
+            real_hits = _corpus_retrieve(
+                question, k=4,
+                classification_filter=["public_record", "internal"],
+            )
+        except Exception:
+            real_hits = []
+
+        if not real_hits:
+            # NEVER log the user's query text in the ROI extra dict — PII
+            # surface. The refusal_reason marker is enough for Power BI.
+            emit_roi({
+                "event_kind": "escalation",  # closest valid enum; refusal not in schema
+                "workflow": "rls_apex.query",
+                "tool": "rls_apex",
+                "surface": "other",  # 'api' is not in the Surface enum
+                "user_id": user_id,
+                "dept": dept,
+                "role_band": role_band,
+                "task_type": "search",
+                "success": False,
+                "extra": {"refusal_reason": "no_grounding"},
+            })
+            refusal = QueryRefusalResponse(message=_REFUSAL_MESSAGE)
+            return JSONResponse(content=refusal.model_dump(), status_code=200)
+
         async def _stream_with_roi() -> AsyncIterator[bytes]:
             """Yield the mock SSE stream, then fire a ROI event after stream close."""
             success = True
             try:
-                async for chunk in _mock_query_stream(question):
+                async for chunk in _mock_query_stream(question, real_hits):
                     yield chunk
             except Exception:
                 success = False
@@ -695,21 +746,23 @@ _CHAIN_STEPS: list[tuple[str, int, str | None]] = [
 ]
 
 
-async def _mock_query_stream(question: str) -> AsyncIterator[bytes]:
+async def _mock_query_stream(question: str, real_hits: list) -> AsyncIterator[bytes]:
     """SSE chain for /api/query. Step trace mirrors PrecedentRetriever; tokens
     stream from `compose` via the LLM client (mock by default; flip env to
-    enable real Ollama/SGLang/OpenAI). Citations come from the real corpus
-    BM25 index when populated, otherwise from intent-routed mocks."""
+    enable real Ollama/SGLang/OpenAI).
+
+    Caller (`/api/query`) pre-fetches retrieval once and threads the hits in
+    here. Lock #19 / TAC-03: when `real_hits` is empty the caller refuses
+    BEFORE reaching this function, so by contract `real_hits` is always
+    non-empty here. We assert it to surface any future regression."""
+    assert real_hits, "_mock_query_stream invariant: caller must refuse on empty retrieval"
 
     def sse(event: str, data: dict) -> bytes:
         return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
 
     mock = _pick_mock(question)
-    # Compute citations BEFORE compose so the LLM can ground its answer on them.
-    real_hits = _corpus_retrieve(question, k=4,
-                                 classification_filter=["public_record", "internal"])
-    citations_for_ctx = ([_citation_to_dict(c) for c in real_hits]
-                         if real_hits else mock["citations"])
+    # Citations come from the real corpus (caller has already confirmed ≥1 hit).
+    citations_for_ctx = [_citation_to_dict(c) for c in real_hits]
 
     t0 = time.perf_counter()
     yield sse("step", {"name": "_chain", "status": "start", "t_ms": 0})
@@ -755,7 +808,9 @@ async def _mock_query_stream(question: str) -> AsyncIterator[bytes]:
         "score": mock.get("score"),
         "band": mock.get("band"),
         "cure_path": mock.get("cure_path", []),
-        "citations_source": "corpus" if real_hits else "canned",
+        # Always "corpus" now — caller refuses on empty retrieval before
+        # reaching this function (Lock #19).
+        "citations_source": "corpus",
         "llm_provider": _llm.provider() if _LLM_OK else "mock",
     })
 
