@@ -2,6 +2,15 @@
 
 **Pre-submission AI validator for Manatee County Requests for Legal Services.** A county staffer pastes a draft RLS, the agent grades it against the procedure / form requirements / cited precedents, and returns a rejection-probability score plus a cure path. That's the whole pilot. Everything else (dashboard, lists, reviewer surfaces) is supporting context for that one flow.
 
+## Status
+
+Proof of Concept. Not for production deployment.
+
+Production track (v0.3+) is gated on:
+- PM assignment
+- Security review signoff
+- Infrastructure signoff (GPU strategy, deployment topology)
+
 > **Status:** v0.1.0 scaffold. Gateway + retrieval + agent dispatcher are real and wired. The LLM call itself is mocked behind a multi-provider seam (`LLM_PROVIDER=ollama|sglang|openai|mock`) — flip it on when SGLang lands on `bcc-ap-infer01`.
 
 ## What this is
@@ -23,6 +32,12 @@ Observ.     Phoenix + Power BI + promptfoo + Inspect AI + manatee_ai_roi sidecar
 2. [`ARCHITECTURE.md`](./ARCHITECTURE.md) — the rings, where they run, how they call each other
 3. [`RUNBOOK.md`](./RUNBOOK.md) — boot order, healthchecks, recovery
 4. [`domain.yaml`](./domain.yaml) — single source of truth for entities, relations, constraints
+
+## Users
+
+- **Records clerk** — high-volume intake (records desk staff). Primary persona.
+- **Department specialist** — occasional edge-case intake from operating departments.
+- **IT power user** — rare complex multi-source search; admin endpoints.
 
 ## Layout
 
