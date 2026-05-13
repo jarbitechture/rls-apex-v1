@@ -64,6 +64,96 @@ _ROI_FALLBACK_PATH = os.environ.get(
 _roi_client = None  # set in lifespan; type: RoiClient | None
 
 
+# ─── LLM endpoint guard (TAC-05) ──────────────────────────────────
+# Lock #19 framing: /api/query is a validator surface. Accidentally pointing
+# the gateway at a third-party LLM (OpenAI, Anthropic, Google) would leak
+# RLS intake text to an external host. Boot aborts if LLM_PROVIDER is set
+# to a real provider AND its base URL points outside the county LAN.
+#
+# No bypass flag. To skip the check intentionally, set LLM_PROVIDER=mock
+# (which already short-circuits to canned text and dials no external host).
+_LLM_HOST_ALLOWLIST: tuple[str, ...] = (
+    "manatee-civic-ai.internal",
+    "infer01",
+    "llm01",
+    "localhost",
+    "127.0.0.1",
+)
+
+# Map provider → env var holding the base URL. Keep this list aligned with
+# apps/gateway/llm/client.py's LLMConfig.
+_LLM_PROVIDER_URL_ENV: dict[str, str] = {
+    "ollama": "OLLAMA_BASE_URL",
+    "sglang": "SGLANG_BASE_URL",
+    "openai": "OPENAI_BASE_URL",
+}
+
+
+def _host_allowed(host: str) -> bool:
+    """Suffix-match against the allowlist. `infer01` matches `infer01`,
+    `infer01.county.local`, but NOT `xinfer01` or `infer01-evil.com`."""
+    if not host:
+        return False
+    host = host.lower()
+    for pattern in _LLM_HOST_ALLOWLIST:
+        p = pattern.lower()
+        if host == p or host.startswith(p + "."):
+            return True
+    return False
+
+
+def assert_llm_endpoint_allowed() -> None:
+    """Validate the LLM endpoint URL against the county-LAN allowlist.
+
+    Raises RuntimeError (aborts FastAPI boot) if the active provider is
+    not `mock` and its base URL hostname falls outside the allowlist.
+    No outbound HTTP — pure URL parse + suffix match.
+    """
+    from urllib.parse import urlparse
+
+    provider = (os.environ.get("LLM_PROVIDER") or "mock").strip().lower()
+    if provider == "mock":
+        return  # mock dials nothing; nothing to check.
+
+    if provider == "auto":
+        # `auto` selects the first configured provider at request time. We
+        # check every configured *_BASE_URL so we don't let `auto` smuggle
+        # an external host past the guard.
+        candidates = [(p, _LLM_PROVIDER_URL_ENV[p]) for p in _LLM_PROVIDER_URL_ENV]
+    else:
+        env_var = _LLM_PROVIDER_URL_ENV.get(provider)
+        if env_var is None:
+            raise RuntimeError(
+                f"[gateway] LLM endpoint guard: unknown provider {provider!r}. "
+                f"Set LLM_PROVIDER to one of: mock, {', '.join(_LLM_PROVIDER_URL_ENV)}."
+            )
+        candidates = [(provider, env_var)]
+
+    for prov, env_var in candidates:
+        url = (os.environ.get(env_var) or "").strip()
+        if not url:
+            # `auto` may legitimately have unset providers — skip them.
+            # For an explicitly selected provider, missing URL is a violation:
+            # boot would later default to localhost or fail opaquely.
+            if provider == "auto":
+                continue
+            raise RuntimeError(
+                f"[gateway] LLM endpoint guard: {env_var} is empty but "
+                f"LLM_PROVIDER={prov!r}. Set {env_var} to a host on the "
+                f"county-LAN allowlist {_LLM_HOST_ALLOWLIST!r}, or set "
+                f"LLM_PROVIDER=mock to skip."
+            )
+        host = (urlparse(url).hostname or "").strip()
+        if not _host_allowed(host):
+            raise RuntimeError(
+                f"[gateway] LLM endpoint guard REFUSING TO BOOT: "
+                f"provider={prov!r} {env_var}={url!r} host={host!r} is not "
+                f"on the county-LAN allowlist {_LLM_HOST_ALLOWLIST!r}. "
+                f"Set LLM_PROVIDER=mock to skip this check."
+            )
+        print(f"[gateway] LLM endpoint guard OK: provider={prov} host={host}", flush=True)
+
+
 # ─── Lifespan ─────────────────────────────────────────────────────
 
 
@@ -75,6 +165,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     close MCP HTTP clients, sync lineage chain to disk.
     """
     global _roi_client
+    # TAC-05: refuse to boot if the LLM endpoint points outside the county LAN.
+    # Runs FIRST so a misconfigured host stops the gateway before it can
+    # accept any traffic. No bypass flag — set LLM_PROVIDER=mock to skip.
+    assert_llm_endpoint_allowed()
     # TODO: load secrets from Azure Key Vault (kv-rls-apex)
     # TODO: load JWT signing keypair from Key Vault, expose to MCP dispatcher
     # TODO: instantiate MCP clients (one per tool, with circuit breakers)
