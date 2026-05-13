@@ -154,3 +154,53 @@ class CorpusChunk(BaseModel):
         if not re.fullmatch(r"[0-9a-f]{64}", v):
             raise ValueError("sha256 must be 64 lowercase hex chars")
         return v
+
+
+class RedactionReason(str, Enum):
+    """Per spec §5.4 + Plan B Task 2. Closed enum; County Attorney +
+    records-officer sign-off gates additions. Backs the redaction_audit.
+    redaction_reason TEXT column (migration b1d742f07a46).
+    """
+
+    pii_name = "pii_name"
+    pii_address = "pii_address"
+    pii_dob = "pii_dob"
+    pii_ssn_or_id = "pii_ssn_or_id"
+    pii_contact = "pii_contact"
+    privileged = "privileged"
+    settlement_terms = "settlement_terms"
+    ongoing_litigation = "ongoing_litigation"
+    other = "other"
+
+
+class RedactionAuditRow(BaseModel):
+    """One row per detected redaction span — mirrors redaction_audit table.
+
+    Migration: alembic b1d742f07a46 (v0.2.1a Stream B). reviewer_upn=NULL means
+    pending human review (ADR-007); only rows with reviewer_upn IS NOT NULL are
+    applied to corpus_chunks. chunk_id back-links to the redacted chunk after
+    apply_and_ingest (NULL until then). id and created_at are server-side and
+    NULL on construct-before-insert.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int | None = None
+    source_doc_id: str
+    chunk_id: int | None = None
+    original_span_start: int = Field(ge=0)
+    original_span_end: int = Field(ge=1)
+    original_text: str
+    redaction_reason: RedactionReason
+    detector: str  # "regex:ssn" | "llm:phi4" | "human" — open string per spec
+    reviewer_upn: str | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime | None = None
+
+    @field_validator("original_span_end")
+    @classmethod
+    def _end_after_start(cls, v: int, info) -> int:
+        start = info.data.get("original_span_start")
+        if start is not None and v <= start:
+            raise ValueError("original_span_end must exceed original_span_start")
+        return v
