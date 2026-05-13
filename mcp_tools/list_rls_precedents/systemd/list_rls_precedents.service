@@ -1,0 +1,24 @@
+[Unit]
+Description=RLS Apex — list_rls_precedents MCP tool (port 30103)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -m mcp_tools.list_rls_precedents.server
+Restart=on-failure
+RestartSec=5
+
+Environment=DB_USER=rls_apex
+Environment=DB_PASSWORD=CHANGE_ME
+Environment=DB_HOST=localhost
+Environment=DB_PORT=5432
+Environment=DB_NAME=rls_apex
+Environment=EMBED_SERVICE_URL=http://localhost:30200/embed
+Environment=MCP_GATEWAY_PUBLIC_KEY_PATH=/etc/rls-apex/gateway.pub
+Environment=ROI_EVENTS_URL=http://localhost:8000
+Environment=ROI_FALLBACK_PATH=/var/log/rls-apex-v1/roi-fallback.jsonl
+
+[Install]
+WantedBy=multi-user.target
