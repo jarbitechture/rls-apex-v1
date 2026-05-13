@@ -1,0 +1,116 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Backend tests: pytest harness uses pytest-postgresql (factories.postgresql_proc),
+  # which spawns an ephemeral Postgres process via initdb/pg_ctl on PATH — NOT a
+  # service container. Alembic's CREATE EXTENSION vector requires the pgvector
+  # binary to be installed against PG16 on the runner itself.
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Postgres 16 + pgvector
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-16-pgvector
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/gateway/requirements.txt
+          pip install -r services/scraper/requirements.txt
+
+      - name: Run pytest
+        run: python -m pytest -q
+
+  # Frontend unit tests: vitest under apps/web. jsdom environment (NOT happy-dom —
+  # happy-dom escapes Lit directive markers in .map(html``) array contexts).
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Run vitest
+        working-directory: apps/web
+        run: npm test
+
+  # E2E tests: Playwright drives the real FastAPI gateway via the webServer
+  # block in playwright.config.js. That webServer launches uvicorn against the
+  # gateway, so the runner needs the same Postgres+pgvector setup as
+  # backend-tests, plus the Python deps and a browser.
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Postgres 16 + pgvector
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-16-pgvector
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      - name: Install Python deps into .venv
+        # playwright.config.js webServer command hardcodes `.venv/bin/python`,
+        # so we materialise that path rather than installing into the system
+        # interpreter.
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r apps/gateway/requirements.txt
+          .venv/bin/pip install -r services/scraper/requirements.txt
+
+      - name: Install frontend deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: apps/web
+        run: npm run test:e2e
