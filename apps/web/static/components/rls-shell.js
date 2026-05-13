@@ -8,6 +8,7 @@ import { attachAutoCorrect } from '../core/automation/auto-correct.js';
 import { attachSmartSurface } from '../core/automation/smart-surface.js';
 
 import './app-header.js';
+import './rls-disclaimer-banner.js';
 import './step-bar.js';
 import './intake-panel.js';
 import './form-panel.js';
@@ -75,9 +76,15 @@ export class RlsShell extends LitElement {
 
   render() {
     if (!this._ready) return html`<p style="padding:32px;color:var(--ink-3)">Loading…</p>`;
-    if (this._route.view === 'cao') return html`<cao-view .rlsId=${this._route.rlsId}></cao-view>`;
+    if (this._route.view === 'cao') {
+      return html`
+        <rls-disclaimer-banner></rls-disclaimer-banner>
+        <cao-view .rlsId=${this._route.rlsId}></cao-view>
+      `;
+    }
     return html`
       <app-header .store=${this.store} .surface=${this._surface}></app-header>
+      <rls-disclaimer-banner></rls-disclaimer-banner>
       <step-bar .store=${this.store}></step-bar>
       <div class="layout">
         <div class="main">${this._renderStep()}</div>
