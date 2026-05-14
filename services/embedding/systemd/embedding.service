@@ -1,0 +1,21 @@
+[Unit]
+Description=RLS Apex — embedding-service (port 30201)
+After=network.target
+
+[Service]
+Type=simple
+User=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+ExecStart=/opt/rls-apex-v1/.venv/bin/uvicorn services.embedding.service:app \
+    --host 127.0.0.1 \
+    --port 30201 \
+    --log-level info
+Restart=on-failure
+RestartSec=5
+
+Environment=OLLAMA_URL=http://bcc-ap-infer01:11434
+Environment=EMBED_MODEL=mxbai-embed-large
+Environment=OLLAMA_KEEP_ALIVE=24h
+
+[Install]
+WantedBy=multi-user.target
