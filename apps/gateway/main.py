@@ -1105,6 +1105,69 @@ except Exception:
     _LLM_OK = False
     _llm = None  # type: ignore
 
+try:
+    from apps.gateway.llm.client import complete_sync as _complete_sync
+    _COMPLETE_SYNC_OK = True
+except Exception:
+    _COMPLETE_SYNC_OK = False
+    _complete_sync = None  # type: ignore
+
+try:
+    from mcp_tools._lib.corpus.retriever import HybridRetriever as _HybridRetriever
+    from mcp_tools._lib.corpus.embed_client import EmbedClient as _EmbedClient
+    _CORPUS_LIB_OK = True
+except Exception:
+    _CORPUS_LIB_OK = False
+    _HybridRetriever = None  # type: ignore
+    _EmbedClient = None  # type: ignore
+
+
+# ─── Policy lint — L14 corpus retrieval singleton ─────────────────
+
+POLICY_SOURCES = ["ldc", "ordinance", "procedure"]
+
+LINT_POLICY_SYSTEM_PROMPT = (
+    "You are a precise policy-compliance classifier for Manatee County RLS submissions. "
+    "Given a user-drafted passage and a small list of policy snippets, decide whether the "
+    "passage violates any snippet. Respond as JSON only:\n"
+    '{"violation": true|false, "rule_citation": "<snippet citation>", '
+    '"field": "factualBackground"|"legalQuestion", '
+    '"explanation": "<one short sentence>"}\n'
+    'If no violation, respond exactly {"violation": false}.'
+)
+
+_lint_retriever = None  # type: _HybridRetriever | None
+
+
+async def _get_lint_retriever():
+    """Lazy-init HybridRetriever singleton for policy lint calls (ADR-006)."""
+    global _lint_retriever
+    if _lint_retriever is None:
+        if not _CORPUS_LIB_OK:
+            raise HTTPException(status_code=503, detail="corpus library unavailable")
+        pool = getattr(app.state, "db_pool", None)
+        if pool is None:
+            raise HTTPException(status_code=503, detail="db pool unavailable")
+        embed_client = _EmbedClient(
+            base_url=os.environ.get("EMBEDDING_SERVICE_URL", "http://127.0.0.1:30201")
+        )
+        _lint_retriever = _HybridRetriever(pool, embed_client)
+    return _lint_retriever
+
+
+async def _call_l4_get_policy_snippets(topic_or_field: str, k: int = 3) -> dict:
+    """Retrieve policy snippets via HybridRetriever (ADR-006: library-in-each-tool)."""
+    retriever = await _get_lint_retriever()
+    hits = await retriever.search(query=topic_or_field, k=k, source_filter=POLICY_SOURCES)
+    has_procedure = any(h.source_type == "procedure" for h in hits)
+    return {
+        "snippets": [
+            {"citation": h.citation, "body": h.body, "source_type": h.source_type}
+            for h in hits[:k]
+        ],
+        "procedure_corpus_pending": not has_procedure,
+    }
+
 
 def _citation_to_dict(c) -> dict:
     return {
@@ -1376,6 +1439,85 @@ async def matter_drafts_reserved(matter_id: str, path: str) -> dict:
         detail="matter drafts ship in v1.0 alongside Reviser (weeks 5-6)",
         headers={"Retry-After": "1209600"},  # 14 days
     )
+
+
+# ─── Policy lint — L14 /api/lint/policy ───────────────────────────
+
+
+@app.post("/api/lint/policy", tags=["agent"])
+async def lint_policy(payload: dict, user: dict = Depends(current_user)) -> dict:
+    """Run policy-lint L14 check against corpus snippets.
+
+    Retrieves policy snippets via HybridRetriever (ADR-006: library-in-each-tool,
+    NOT HTTP to L4 MCP service). Calls LLM to classify potential violations.
+    Emits llm_call ROI event. Returns suggestion chip data or empty suggestions.
+    """
+    rls_payload = payload.get("rlsPayload", {})
+    factual = rls_payload.get("factualBackground", "")
+    legal_q = rls_payload.get("legalQuestion", "")
+    topic = factual or legal_q
+    if not topic.strip():
+        return {"suggestions": []}
+
+    snippets_resp = await _call_l4_get_policy_snippets(topic_or_field=topic)
+    snippets = snippets_resp.get("snippets", [])
+    if not snippets:
+        return {"suggestions": []}
+
+    snippet_text = "\n\n".join(
+        f"- {s['citation']}: {s['body']}" for s in snippets
+    )
+    user_msg = (
+        f"PASSAGE:\n{topic}\n\nPOLICY SNIPPETS:\n{snippet_text}\n\nClassify."
+    )
+
+    started = time.monotonic()
+    try:
+        if not _COMPLETE_SYNC_OK or _complete_sync is None:
+            raise RuntimeError("complete_sync not available")
+        raw = await _complete_sync(
+            system=LINT_POLICY_SYSTEM_PROMPT,
+            user=user_msg,
+            max_tokens=256,
+            temperature=0.0,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=f"policy lint llm unavailable: {e}")
+    duration_s = time.monotonic() - started
+
+    try:
+        verdict = json.loads(raw)
+    except json.JSONDecodeError:
+        verdict = {"violation": False}
+
+    emit_roi({
+        "event_kind": "llm_call",
+        "workflow": "rls_apex",
+        "user_id": user["upn"],
+        "dept": user.get("dept", "unknown"),
+        "role_band": user.get("role_band", "unknown"),
+        "task_type": "policy_lint",
+        "tool": "rls_apex",
+        "surface": "ui",
+        "duration_s": duration_s,
+        "success": True,
+        "prompt_tokens": len(LINT_POLICY_SYSTEM_PROMPT.split()) + len(user_msg.split()),
+        "output_tokens": len(raw.split()),
+        "extra": {"snippet_count": len(snippets)},
+    })
+
+    if not verdict.get("violation"):
+        return {"suggestions": []}
+
+    return {
+        "suggestions": [{
+            "ruleId": "policy-lint-llm",
+            "field": verdict.get("field", "factualBackground"),
+            "citation": verdict.get("rule_citation", snippets[0]["citation"]),
+            "explanation": verdict.get("explanation", ""),
+            "severity": "info",
+        }],
+    }
 
 
 # ─── ROI sidecar (D-001) ──────────────────────────────────────────

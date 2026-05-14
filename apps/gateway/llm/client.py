@@ -252,3 +252,20 @@ async def _openai_compat_stream(
                     tok = delta.get("content")
                     if tok:
                         yield tok
+
+
+# ─── Non-streaming helper ─────────────────────────────────────────
+
+async def complete_sync(
+    system: str,
+    user: str,
+    max_tokens: int = 256,
+    temperature: float = 0.0,
+) -> str:
+    """Non-streaming completion. Used by /api/lint/policy classify call."""
+    chunks: list[str] = []
+    async for chunk in stream_completion(
+        system=system, user=user, max_tokens=max_tokens, temperature=temperature,
+    ):
+        chunks.append(chunk)
+    return "".join(chunks)
