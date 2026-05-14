@@ -1,0 +1,18 @@
+[Unit]
+Description=RLS Apex — check_code_enforcement_litigation MCP tool (port 30105)
+After=network.target
+
+[Service]
+Type=simple
+User=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -m mcp_tools.check_code_enforcement_litigation.server
+Restart=on-failure
+RestartSec=5
+
+Environment=MCP_GATEWAY_PUBLIC_KEY_PATH=/etc/rls-apex/gateway.pub
+Environment=ROI_EVENTS_URL=http://localhost:8000
+Environment=ROI_FALLBACK_PATH=/var/log/rls-apex-v1/roi-fallback.jsonl
+
+[Install]
+WantedBy=multi-user.target
