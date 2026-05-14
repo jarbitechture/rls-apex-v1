@@ -56,7 +56,7 @@ async def _get_retriever() -> HybridRetriever:
 
     if _embed_client is None:
         embed_url = os.environ.get(
-            "EMBED_SERVICE_URL", "http://localhost:30200/embed"
+            "EMBEDDING_SERVICE_URL", "http://127.0.0.1:30201"
         )
         _embed_client = EmbedClient(embed_url)
 
