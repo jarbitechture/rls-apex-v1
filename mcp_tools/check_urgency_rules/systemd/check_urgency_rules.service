@@ -1,0 +1,23 @@
+[Unit]
+Description=RLS Apex — check_urgency_rules MCP tool (port 30106)
+After=network.target
+
+[Service]
+Type=simple
+User=rls-apex
+WorkingDirectory=/opt/rls-apex-v1
+ExecStart=/opt/rls-apex-v1/.venv/bin/python -m mcp_tools.check_urgency_rules.server
+Restart=on-failure
+RestartSec=5
+
+Environment=MCP_GATEWAY_PUBLIC_KEY_PATH=/etc/rls-apex/gateway.pub
+Environment=ROI_EVENTS_URL=http://localhost:8000
+Environment=ROI_FALLBACK_PATH=/var/log/rls-apex-v1/roi-fallback.jsonl
+Environment=DB_USER=rls_apex
+Environment=DB_PASSWORD=
+Environment=DB_HOST=localhost
+Environment=DB_PORT=5432
+Environment=DB_NAME=rls_apex
+
+[Install]
+WantedBy=multi-user.target
