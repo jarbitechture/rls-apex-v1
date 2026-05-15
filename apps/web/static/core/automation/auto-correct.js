@@ -60,20 +60,109 @@ const dateInfer = {
   },
 };
 
-export const RULES = [subjectTrim, titleCaseFix, dateInfer];
+// L14 — policy-lint LLM rule. Calls POST /api/lint/policy. Gating per
+// v0.2.0b smart-surface contract: blurredFields + dedup + max 1 chip per field.
+
+function _defaultHash(value) {
+  // 32-bit FNV-1a — sufficient for dismiss dedup, no crypto requirement
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+const policyLintLlm = {
+  id: 'policy-lint-llm',
+  async: true,
+  async apply(payload, options = {}) {
+    const ui = payload.ui || {};
+    const blurred = ui.blurredFields || [];
+    // Gate: rule only fires for fields the user has blurred (touched + moved away)
+    const target = blurred.includes('factualBackground')
+      ? 'factualBackground'
+      : blurred.includes('legalQuestion') ? 'legalQuestion' : null;
+    if (!target) return null;
+
+    let resp;
+    try {
+      resp = await fetch('/api/lint/policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rlsPayload: payload }),
+      });
+    } catch (e) {
+      return null;
+    }
+    if (!resp.ok) return null;
+
+    let data;
+    try {
+      data = await resp.json();
+    } catch (e) {
+      return null;
+    }
+    const suggestions = data.suggestions || [];
+    if (suggestions.length === 0) return [];
+
+    // Dismiss-dedup: drop suggestions whose (ruleId, field, value-hash) tuple
+    // is in ui.dismissedSuggestions
+    const dismissed = new Set(ui.dismissedSuggestions || []);
+    const computeHash = options.computeHash || _defaultHash;
+    return suggestions.filter((s) => {
+      const value = payload[s.field] || '';
+      const tuple = `${s.ruleId}:${s.field}:${computeHash(value)}`;
+      return !dismissed.has(tuple);
+    });
+  },
+};
+
+export const RULES = [subjectTrim, titleCaseFix, dateInfer, policyLintLlm];
 
 export function computeSuggestions(payload) {
   const out = [];
   for (const rule of RULES) {
+    // Skip async rules — they are handled by computeAsyncSuggestions
+    if (rule.async) continue;
     const s = rule.apply(payload);
     if (s) out.push(s);
   }
   return out;
 }
 
+export async function computeAsyncSuggestions(payload, options = {}) {
+  const out = [];
+  for (const rule of RULES.filter(r => r.async)) {
+    try {
+      const result = await rule.apply(payload, options);
+      if (Array.isArray(result)) {
+        out.push(...result);
+      } else if (result) {
+        out.push(result);
+      }
+    } catch (e) {
+      // Swallow errors — async suggestions are advisory, never blocking
+    }
+  }
+  return out;
+}
+
 export function attachAutoCorrect(store) {
   store.subscribe('draft', () => {
+    // Synchronous rules — update immediately
     const suggestions = computeSuggestions(store.draft.rlsPayload);
     store.update('ui', u => { u.autocorrectSuggestions = suggestions; });
+
+    // Async rules — fire-and-forget, merge results when they resolve
+    computeAsyncSuggestions(store.draft.rlsPayload).then(asyncSuggestions => {
+      if (asyncSuggestions.length > 0) {
+        store.update('ui', u => {
+          u.autocorrectSuggestions = (u.autocorrectSuggestions || []).concat(asyncSuggestions);
+        });
+      }
+    }).catch(() => {
+      // Errors swallowed — telemetry never blocks the user-facing action
+    });
   });
 }
