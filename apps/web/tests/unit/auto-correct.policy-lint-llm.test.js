@@ -62,6 +62,20 @@ describe("policy-lint-llm rule", () => {
     expect(out).toBeNull();
   });
 
+  it("fires when blurredFields is a Set (production store shape)", async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ suggestions: [{ ruleId: "policy-lint-llm", field: "factualBackground", citation: "LDC §6.4(a)(2)", explanation: "x", severity: "info" }] }),
+    });
+    const payload = {
+      factualBackground: "We plan to erect a new structure.",
+      ui: { blurredFields: new Set(["factualBackground"]) },
+    };
+    const out = await policyLintLlm.apply(payload, {});
+    expect(out).toHaveLength(1);
+    expect(out[0].field).toBe("factualBackground");
+  });
+
   it("respects dismissed suggestion dedup — suppresses chip if value-hash already dismissed", async () => {
     // Suggestion hash = `policy-lint-llm:factualBackground:<value-hash>`
     const valueHash = "deadbeef";

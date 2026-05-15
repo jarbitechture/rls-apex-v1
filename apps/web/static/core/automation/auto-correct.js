@@ -78,11 +78,12 @@ const policyLintLlm = {
   async: true,
   async apply(payload, options = {}) {
     const ui = payload.ui || {};
-    const blurred = ui.blurredFields || [];
+    const bf = ui.blurredFields;
     // Gate: rule only fires for fields the user has blurred (touched + moved away)
-    const target = blurred.includes('factualBackground')
-      ? 'factualBackground'
-      : blurred.includes('legalQuestion') ? 'legalQuestion' : null;
+    // blurredFields may be a Set (production store shape) or an Array (test fixtures)
+    const isBlurred = (f) => bf instanceof Set ? bf.has(f) : Array.isArray(bf) ? bf.includes(f) : false;
+    const target = isBlurred('factualBackground') ? 'factualBackground'
+                 : isBlurred('legalQuestion') ? 'legalQuestion' : null;
     if (!target) return null;
 
     let resp;
@@ -155,7 +156,8 @@ export function attachAutoCorrect(store) {
     store.update('ui', u => { u.autocorrectSuggestions = suggestions; });
 
     // Async rules — fire-and-forget, merge results when they resolve
-    computeAsyncSuggestions(store.draft.rlsPayload).then(asyncSuggestions => {
+    // Forward only blurredFields so the gate in policyLintLlm fires in production
+    computeAsyncSuggestions({ ...store.draft.rlsPayload, ui: { blurredFields: store.ui.blurredFields } }).then(asyncSuggestions => {
       if (asyncSuggestions.length > 0) {
         store.update('ui', u => {
           u.autocorrectSuggestions = (u.autocorrectSuggestions || []).concat(asyncSuggestions);
