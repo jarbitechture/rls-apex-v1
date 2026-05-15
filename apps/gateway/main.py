@@ -35,6 +35,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from apps.gateway.health_aggregator import HealthAggregator
+
 # DEV_AUTH_BYPASS=1 turns on the local click-through:
 # - current_user returns a synthetic dev user instead of validating Entra ID
 # - /api/query returns a canned mock SSE stream
@@ -62,6 +64,8 @@ _ROI_FALLBACK_PATH = os.environ.get(
     "ROI_FALLBACK_PATH", "/var/log/rls-apex-v1/roi-fallback.jsonl"
 )
 _roi_client = None  # set in lifespan; type: RoiClient | None
+_health_aggregator: HealthAggregator | None = None
+_health_poller_task: asyncio.Task | None = None
 
 
 # ─── LLM endpoint guard (TAC-05) ──────────────────────────────────
@@ -164,7 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     On shutdown: drain in-flight DSPy calls, flush ROI sidecar buffer,
     close MCP HTTP clients, sync lineage chain to disk.
     """
-    global _roi_client
+    global _roi_client, _health_aggregator, _health_poller_task
     # TAC-05: refuse to boot if the LLM endpoint points outside the county LAN.
     # Runs FIRST so a misconfigured host stops the gateway before it can
     # accept any traffic. No bypass flag — set LLM_PROVIDER=mock to skip.
@@ -224,7 +228,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         print(f"[lifespan] db pool FAILED: {e!r} — gateway running without db (some endpoints will degrade)")
         app.state.db_pool = None
+    # === health aggregator background poller (W8) ===
+    _health_aggregator = HealthAggregator()
+    _health_poller_task = asyncio.create_task(_health_aggregator.run_forever())
     yield
+    # === health poller teardown ===
+    if _health_poller_task is not None:
+        _health_poller_task.cancel()
+        try:
+            await _health_poller_task
+        except asyncio.CancelledError:
+            pass
     # === pool teardown ===
     if getattr(app.state, "db_pool", None) is not None:
         await app.state.db_pool.close()
@@ -929,6 +943,31 @@ async def health_sidecar() -> dict:
     status["fallback_path"] = _ROI_FALLBACK_PATH
     status["mock"] = DEV_MODE
     return status
+
+
+@app.get("/api/health/aggregated", tags=["ops"])
+async def api_health_aggregated() -> JSONResponse:
+    """W8 — snapshot from the 30s background poller.
+
+    Returns the last-cached health snapshot for the 6 independent HTTP
+    services polled by HealthAggregator. HTTP 200 when all services are
+    healthy; HTTP 503 when any service is degraded/unreachable, or when
+    the aggregator has not yet been initialized.
+    """
+    if _health_aggregator is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unknown", "tools": {}, "checked_at": None},
+        )
+    snap = _health_aggregator.snapshot()
+    body = {
+        "status": snap.overall_status,
+        "tools": snap.tools,
+        "checked_at": snap.checked_at,
+    }
+    if snap.overall_status != "healthy":
+        return JSONResponse(status_code=503, content=body)
+    return JSONResponse(status_code=200, content=body)
 
 
 # ─── Mock RLS data endpoints (DEV_MODE) ───────────────────────────

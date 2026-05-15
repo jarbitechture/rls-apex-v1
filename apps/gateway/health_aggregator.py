@@ -1,7 +1,7 @@
 """W8 — 30s background poller for all v0.2.1a /health endpoints.
 
-Per spec §9. Polls 9 components (3 v0.2.0b tools + 4 new MCP tools + 2
-new services) every 30s, caches the result, exposes a snapshot
+Per spec §9. Polls 6 independent HTTP services (4 MCP tool servers +
+scraper + embedding) every 30s, caches the result, exposes a snapshot
 accessor. The /api/health/aggregated endpoint just returns the cache.
 """
 from __future__ import annotations
@@ -16,10 +16,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Only independent HTTP services with their own systemd unit belong here.
+# In-process tools imported by the gateway (classify_matter, extract_fields,
+# validate_rls_structure) are NOT polled — their health is the gateway's own
+# health (/healthz, /readyz). If any in-process tool is promoted to a
+# standalone systemd service, add its /health here.
 TOOL_HEALTH_ENDPOINTS: dict[str, str] = {
-    "validate_rls_structure":         "http://127.0.0.1:30100/health",
-    "classify_matter":                "http://127.0.0.1:30101/health",
-    "extract_fields":                 "http://127.0.0.1:30102/health",
     "list_rls_precedents":            "http://127.0.0.1:30103/health",
     "get_policy_snippets":            "http://127.0.0.1:30104/health",
     "check_code_enforcement_litigation": "http://127.0.0.1:30105/health",

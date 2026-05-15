@@ -61,7 +61,7 @@ async def test_poll_once_records_all_endpoint_states():
     snap = agg.snapshot()
     assert len(snap.tools) == len(TOOL_HEALTH_ENDPOINTS)
     assert snap.tools["embedding_service"]["status"] == "degraded"
-    assert snap.tools["validate_rls_structure"]["status"] == "healthy"
+    assert snap.tools["list_rls_precedents"]["status"] == "healthy"
     assert snap.overall_status == "degraded"
 
 
