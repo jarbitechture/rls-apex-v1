@@ -1,7 +1,6 @@
 // COMPLIANCE: This banner must be present on every user-facing surface of rls-apex-v1.
 // Lock #19 (validator framing) and TAC-02 (legal disclaimer) both depend on its visibility.
-// If migrating to apps/web/static/src/*.jsx (the React layer that's currently dormant), or to
-// any future frontend, you MUST port this component first and keep
+// If migrating to any future frontend, you MUST port this component first and keep
 // tests/e2e/disclaimer.spec.js asserting [data-testid="rls-disclaimer-banner"] in the new
 // layer's rendered DOM. The Playwright assertion is the load-bearing guard — do not weaken it
 // to a text-match or remove the testid.
