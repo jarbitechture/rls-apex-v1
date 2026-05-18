@@ -341,3 +341,26 @@ Every action emits a ROI event using schema 1.1.0:
 **Rationale:** README §"What this is" already says "grades [an RLS] against procedure / form requirements / cited precedents, and returns a rejection-probability score plus a cure path." Reframe spec (2026-05-08) locked "MCP-first procedural agent." `/api/intake` accepts structured `RlsPayload`, not user paste. Plans A/C/D are coherent with validator framing. The 2026-05-11 tactical work order (TAC-03/06) leaned generator and conflicted with the actual code surfaces, file paths, and schema enum — `event_kind="refusal"` is not in the EventKind enum; `apps/gateway/handlers/generate.py` doesn't exist; no packet-generation prompt or endpoint exists.
 
 **Reversal cost:** Medium — flipping to generator requires (a) a new prompt artifact + packet-generation endpoint, (b) the packet footer surface (TAC-06), (c) the disclaimer-shown response field, (d) a different L1-L14 target (LLM output instead of user intake). The validator-direction code (Plans A/C/D + existing /api/query streaming) does NOT need to be undone first.
+
+---
+
+## Lock #20 — Lineage canonicalization + link algorithm (the legal tamper-evidence anchor)
+
+**Decision:** The RLS lineage chain's tamper-evidence is a **self-specified, normative algorithm** — spec `2026-05-18-rls-persistence-genesis-design.md` §5.1 rules (1)–(6) + §5.2 byte construction — carried under `chain_version` (currently `"1"`). It is **not** RFC 8785 (JCS) and no JCS library may be assumed to reproduce it. Essence: the hashed `payload` is a strict **string-only** object (every value a string; no floats/booleans/nulls/nested; absence = omitted key; ISO-8601-UTC-`Z` timestamps; NFC-normalized strings; `chain_version` always present), serialized as `json.dumps(payload, sort_keys=True, separators=(",",":"), ensure_ascii=False)` UTF-8 (keys ordered by Unicode code point; escaping exactly CPython `json` with `ensure_ascii=False`). The link is `sha256( (prev_hash or "GENESIS").encode("ascii") + b"\x1f" + str(sequence).encode("ascii") + b"\x1f" + canonical_bytes(payload) ).hexdigest()` (lowercase 64-hex). Genesis = `prev_hash=None`, `sequence=1`, sentinel `"GENESIS"`.
+
+**Implications:**
+- The algorithm is reproducible by an auditor from the spec/this lock **alone**, without our source and without any external standard — that is the entire point; do not "tidy" it toward JCS or a library.
+- `chain_version` is the only sanctioned evolution path. Any change to canonicalization or the link construction is **chain-breaking**: it requires a new `chain_version`, retention of the v1 algorithm for verifying all pre-existing events, and a documented migration — never an in-place edit.
+- One shared pure module (`apps/gateway/db/lineage.py`) implements it; **both** `PgRepo` and `_MockRepo` call it, so the DEV path exercises the real chain math (no faked head).
+- `verify_chain` (spec §5.3) is the public verification contract: contiguous `1..N` sequences, genesis `prev_hash is None`, each `prev_hash == prior this_hash`, each `compute_link(...) == this_hash`.
+- Provenance (`authn`, `actor_id`) lives **inside** the hashed payload: chain integrity proves a tamper-evident record of the *asserted* (not authenticated) actor — integrity ≠ identity assurance.
+
+**Alternatives considered:**
+- **RFC 8785 / JCS** — rejected: we do not implement JCS; adopting the *claim* without the implementation is a false-conformance defect (the original spec defect that triggered this lock). A conforming library would add a supply-chain dependency requiring county review, and JCS's UTF-16 code-unit key ordering + distinct escaping table differ from stdlib `json`, so "use a JCS lib" would *not* reproduce our bytes anyway.
+- **CBOR / protobuf canonical form** — rejected: byte-opaque to a non-engineer auditor; the value here is that a records/legal reviewer can recompute from a written rule.
+- **No canonicalization (hash raw request bytes)** — rejected: non-deterministic across clients/serializers; unverifiable.
+- **Per-field concatenation without JSON** — rejected: reinvents escaping/ordering with more edge cases than a constrained JSON profile.
+
+**Rationale:** A legal tamper-evidence anchor must be independently recomputable years later from a written specification, by someone who does not have (or trust) our codebase. Constraining the payload to strings-only sidesteps JSON's only hard canonicalization problem (number forms) and makes the documented profile genuinely sufficient. No runtime dependency keeps it inside county supply-chain governance. `chain_version` gives forward evolvability without ever silently invalidating prior chains.
+
+**Reversal cost:** **Very high — effectively irreversible once a single real chain exists.** Any change to §5.1/§5.2 retroactively breaks `verify_chain` for every prior `lineage_event`. The only forward-safe path is a new `chain_version` that keeps the v1 algorithm available for historical verification in perpetuity. This irreversibility is precisely why this lock is a **precondition to `writing-plans`**, authored and accepted as part of P1 design sign-off rather than deferred into the implementation plan.

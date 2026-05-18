@@ -402,18 +402,20 @@ NOT reproducible on the mock:**
 ## 14. Required ADRs (writing-plans MUST produce these)
 
 This is a legal-liability subsystem; the irreversible-ish decisions must be
-ADR'd in the repo's `DECISION_LOG.md`/ADR-### convention so future
-maintainers cannot silently "tidy" the anchor.
+recorded in the repo's decision-record convention — `DECISION_LOG.md`
+**`## Lock #N`** entries (Decision / Implications / Rationale / Reversal
+cost; there is no separate `ADR-###` file series) — so future maintainers
+cannot silently "tidy" the anchor.
 
-**Precondition ADR — author and accept BEFORE `writing-plans` (not a plan
-task):**
+**Precondition decision — authored and accepted BEFORE `writing-plans`
+(not a plan task): ✅ DONE — `DECISION_LOG.md` Lock #20.**
 
-- **ADR — Lineage canonicalization + link algorithm.** The
+- **Lock #20 — Lineage canonicalization + link algorithm.** The
   §5.1(1–6) + §5.2 byte construction is the normative, self-specified legal
   anchor; not JCS; changing it is a chain-breaking, `chain_version`-gated
   event. Because the entire P1 plan builds on this algorithm and it is
-  effectively irreversible once a single real chain exists, its ADR is part
-  of *this design's acceptance*, not deferred into the plan.
+  effectively irreversible once a single real chain exists, it was recorded
+  as part of *this design's acceptance*, not deferred into the plan.
 
 **Plan-task ADRs — the P1 implementation plan MUST include explicit tasks to
 author, at minimum:**
