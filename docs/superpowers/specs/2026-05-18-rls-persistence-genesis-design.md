@@ -48,7 +48,7 @@ in v0.2.1") is enabled — it is the genesis trigger.
 | Genesis point | When does a durable `rls` row exist? | At explicit **Submit/promote** (after validate, `blocking==0`). Drafts stay client-side; abandoned intakes never persist (Lock #19 hygiene). |
 | Submit safety | Duplicate-submit protection + id allocation | DB-allocated `rls_id` + shared **idempotency key** (`audit_event.UNIQUE(idempotency_key)` is the primitive). |
 | Backend topology | Persistence shape | **Approach 1**: one `repository.py` interface; env-gated backend; `get_repo` resolves **per-request**. |
-| Official-ID contiguity | Sequence vs counter | **Per-year counter row** (`SELECT … FOR UPDATE`) inside the genesis tx → contiguous, transactional, no gaps. Contention is a non-issue at human submission volume. |
+| Official-ID contiguity | Sequence vs counter | **Per-year counter row** via atomic `INSERT … ON CONFLICT (year) DO UPDATE … RETURNING` inside the genesis tx → contiguous, transactional, no gaps. Contention is a non-issue at human submission volume. |
 | Canonicalization | Hash determinism | **Strict string-only profile**, self-specified algorithm (§5.1 rules 1–6, *not* JCS), `chain_version` in payload, no new runtime dependency. |
 | Tx model | Write topology | Approach-A (reused from P2): one PG tx; post-commit fire-and-forget ROI; tool→PG breaker **fail-loud** (Lock #18). |
 
@@ -131,11 +131,20 @@ rules (1)–(6) and §5.2 alone — not from any external standard.
 ### 5.2 Link function
 
 ```
-compute_link(prev_hash, sequence, payload) =
-    sha256_hex( (prev_hash or "GENESIS")
-                | "\x1f" | str(sequence)
-                | "\x1f" | canonical_bytes(payload) )
+compute_link(prev_hash, sequence, payload) = sha256_hexdigest(
+      (prev_hash or "GENESIS").encode("ascii")   # 64-hex or literal GENESIS
+    + b"\x1f"                                     # single 0x1F byte
+    + str(sequence).encode("ascii")               # ASCII decimal digits
+    + b"\x1f"                                      # single 0x1F byte
+    + canonical_bytes(payload)                     # §5.1 — already bytes
+)
 ```
+
+The hash input is **bytes**, constructed exactly as above: the string
+operands are ASCII-encoded, each delimiter is the single byte `0x1F`,
+`canonical_bytes` is appended as-is, and the SHA-256 is rendered as
+lowercase 64-char hex. This byte construction is normative — an auditor
+reproduces it from this paragraph alone.
 
 `\x1f` (ASCII Unit Separator) is the field delimiter, and the concatenation
 is unambiguous because **no field can contain a raw 0x1F byte**: `prev_hash`
@@ -158,15 +167,28 @@ trusting the application** and without our source — only this spec.
 
 Precondition (server-side): payload validates with `blocking == 0`.
 
+**`ts` is captured exactly once** — UTC at request receipt, formatted per
+§5.1 rule 2 — and the *same* value is reused in both the step-2 `audit_event`
+envelope and the step-3 hashed `payload₁`. It is never re-read from the clock
+(request-time ≠ commit-time; two captures could diverge and would make the
+audit envelope inconsistent with the anchored hash).
+
 One PG transaction, **ordered so the idempotency-replay path works**:
 
 1. **Mint `rls_id` first.** `:yr` = the **calendar year** (UTC) of submission;
-   `:yy` = its last two digits. `INSERT INTO id_counter(year, next_seq)
-   VALUES (:yr, 1) ON CONFLICT (year) DO NOTHING;` then
-   `SELECT next_seq FROM id_counter WHERE year=:yr FOR UPDATE;`
-   `UPDATE id_counter SET next_seq = next_seq + 1 WHERE year=:yr;`
-   → `rls_id = f"RLS-{yy}-{seq:04d}"`. The counter mutates inside this tx, so a
-   rollback consumes no number (contiguous official IDs).
+   `:yy` = its last two digits. Allocate with a single **atomic
+   upsert-returning** (do NOT use `INSERT … ON CONFLICT DO NOTHING` then
+   `SELECT … FOR UPDATE` — under a concurrent first-of-year insert the
+   conflicting row is uncommitted/invisible and the SELECT can return zero
+   rows):
+   `INSERT INTO id_counter (year, next_seq) VALUES (:yr, 2)
+   ON CONFLICT (year) DO UPDATE SET next_seq = id_counter.next_seq + 1
+   RETURNING next_seq - 1 AS seq;`
+   → `rls_id = f"RLS-{yy}-{seq:04d}"`. One statement: the first-ever submit of
+   a year inserts the row (claiming seq 1, leaving `next_seq=2`); every later
+   submit atomically bumps and returns. The row write is inside this tx, so a
+   rollback consumes no number (contiguous official IDs); the row lock taken
+   by `DO UPDATE` serializes concurrent submits for the year.
 2. `INSERT INTO audit_event (rls_id, actor_id, actor_role, action,
    payload, idempotency_key) VALUES (…, 'rls.create', …, :key);`
    `audit_event.payload` here is the **request envelope** (raw submitted
@@ -180,10 +202,13 @@ One PG transaction, **ordered so the idempotency-replay path works**:
    `get_rls(rls_id)` → return the existing record (HTTP 200, no second
    privileged row). `audit_event.rls_id` was populated by the *original*
    winning tx (its step 1 ran first), which is why the lookup resolves.
-   Same-key races are serialized by step 1's `SELECT … FOR UPDATE` on the
-   counter row, so the idempotency outcome is deterministic (the second
-   submitter blocks until the first commits, then deterministically hits the
-   unique-violation replay path).
+   Same-key races are serialized by the row lock step 1's
+   `ON CONFLICT … DO UPDATE` takes on the per-year counter row, so the
+   idempotency outcome is deterministic: the second submitter blocks until
+   the first **commits or aborts**. If the first committed, the second hits
+   the unique-violation replay path (returns the existing record). If the
+   first aborted (validation, breaker fail-loud), the second proceeds as the
+   legitimate winner.
 3. Build `payload₁` (canonical profile §5.1 — every value a string):
    `{chain_version:"1", rls_id, type, subject, department, contact_name,
    contact_extension, classification, actor_id, authn:"pilot_bypass", ts}`,
@@ -192,7 +217,12 @@ One PG transaction, **ordered so the idempotency-replay path works**:
    classification string — §5.1 forbids nested objects). The `authn`
    provenance is in the hashed payload — the chain itself proves identity was
    self-asserted, not authenticated (Lock #19 choice, cryptographically
-   anchored).
+   anchored). **Under `DEV_AUTH_BYPASS`, `actor_id` MUST be the single
+   configured pilot principal (server-side constant), NOT request-controlled
+   free text** — otherwise one pilot user could author a tamper-evident
+   genesis attributed to another named individual. (When real authn lands,
+   `actor_id` comes from the verified token and `authn` flips off
+   `pilot_bypass`.)
 4. `this_hash = compute_link(None, 1, payload₁)`.
 5. `INSERT INTO rls (rls_id, …, status='ReadyForCAO',
    lineage_head=:this_hash)` +
@@ -211,11 +241,23 @@ integrity ≠ identity assurance — stated so no one later conflates them.
 ## 7. Idempotency
 
 `audit_event.UNIQUE(idempotency_key)` is the single mechanism, shared with P2's
-decision idempotency (one operator mental model). The client supplies
-`idempotency_key` on Submit. First submit writes the row; a replayed key
-(double-click, dropped-response retry) hits the UNIQUE violation → the original
-`rls_id` + record is returned, 200, **no second row, no consumed counter
-number**. A genuinely different submission uses a different key.
+decision idempotency (one operator mental model). First submit writes the row;
+a replayed key (double-click, dropped-response retry) hits the UNIQUE
+violation → the original `rls_id` + record is returned, 200, **no second row,
+no consumed counter number**. A genuinely different submission uses a
+different key.
+
+**Key stability is load-bearing for Lock #19** — the whole no-duplicate-
+privileged-row guarantee rests on the same logical submission carrying the
+same key across a retry. A freshly-random key minted per click would defeat
+dedup: a dropped-response retry after a refresh would create a *second*
+genesis (new `rls_id`, new official number) for one matter. Therefore the
+key MUST be stable across retries of the same submission, by one of:
+(a) server-minted on draft-open and echoed back on Submit (preferred — the
+client cannot get it wrong), or (b) a deterministic digest of the canonical
+draft content. It MUST NOT be `uuid4()` generated at click time. P1 owns the
+submit-panel, so P1 implements (a). Required test: *same draft, new browser
+session/refresh, Submit twice* → exactly one `rls` row.
 
 ## 8. DEV parity & read-path migration
 
@@ -251,26 +293,45 @@ No change to the existing three tables.
 
 ## 10. Testing strategy (strict-TDD)
 
-Parametrized so the **same suite runs against `_MockRepo` and `PgRepo`**:
+**Test-parity boundary (honest):** only `lineage.py` is genuinely shared
+code. The shape/contract suite is parametrized across `_MockRepo` and
+`PgRepo`. **Transaction-isolation and concurrency properties cannot be
+reproduced by an in-process map** — `ON CONFLICT … DO UPDATE` row-lock
+serialization, abort-on-unique-violation, separate-tx replay — so
+those tests run against a **real Postgres only** (testcontainers/ephemeral
+DB), NOT `_MockRepo`. Claiming mock/PG parity for isolation would give false
+confidence.
+
+Parametrized across both backends (shape/contract):
 
 - **`lineage.py` (pure):** canonical-profile determinism (key order, NFC, ts
-  format); `compute_link` known-answer vectors; `verify_chain` detects
-  reorder / tamper / broken link / missing genesis; `chain_version` present;
-  a non-conforming payload (float/None/nested) is rejected before hashing.
-- **Genesis tx:** creates `rls` + `lineage_event` seq 1 (`prev_hash`=NULL,
-  `lineage_head == this_hash`) atomically; forced failure rolls back leaving
-  **no `rls`, no `lineage_event`, and no `id_counter` gap**.
-- **Idempotency:** replayed key → same `rls_id`, no second row, counter
-  unchanged; distinct key → new contiguous id.
-- **ID contiguity:** concurrent submits → contiguous per-year ids; first
-  submit of a new year initializes that year's counter row.
-- **Breaker fail-loud:** PG breaker open → 503, no partial write.
-- **ROI:** post-commit `tool_invocation` emitted **only on success** (W1);
-  emit failure does not fail the request.
+  format); `compute_link` known-answer vectors (incl. the exact §5.2 byte
+  construction); `verify_chain` detects reorder / tamper / broken link /
+  missing genesis; `chain_version` present; a non-conforming payload
+  (float/None/nested) is rejected before hashing.
+- **Genesis happy-path shape:** create → `rls` + `lineage_event` seq 1
+  (`prev_hash`=NULL, `lineage_head == this_hash`), correct `rls_id` format.
 - **Mock-adapter normalization:** loose `_mock` dict → schema-valid strict
   record (coerces status enum, synthesizes `lineage_head`/`created_at`).
 - **Read-path:** `get_brief`/`get_rls`/`list_for_cao`/`get_lineage` shapes
   unchanged under `_MockRepo` (CAO brief consumer sees no difference).
+
+**PgRepo only — real Postgres (testcontainers); isolation/concurrency,
+NOT reproducible on the mock:**
+
+- **Atomic rollback:** forced failure mid-genesis rolls back leaving
+  **no `rls`, no `lineage_event`, and no `id_counter` gap**.
+- **Idempotency replay:** replayed key → same `rls_id`, no second row,
+  counter unchanged; distinct key → new contiguous id; **same draft +
+  fresh session/refresh, Submit twice → exactly one `rls` row** (§7
+  key-stability — the Lock #19 guard).
+- **ID contiguity under concurrency:** N concurrent submits → N contiguous
+  per-year ids, no gap, no dup; first-of-year initializes the row atomically
+  (the `ON CONFLICT DO UPDATE` path, §6 step 1).
+- **Breaker fail-loud:** PG breaker open → 503, no partial write.
+- **ROI ordering:** post-commit `tool_invocation` only on success (W1);
+  emit failure does not fail the request; crash between commit and emit is
+  the accepted at-most-once gap (§13), asserted as documented behavior.
 
 ## 11. P2 carry-forward (decided this session, feeds the P2 spec)
 
@@ -326,9 +387,10 @@ Parametrized so the **same suite runs against `_MockRepo` and `PgRepo`**:
   never blocks the user action (Rule #18) and the renewal/Power-BI use case
   tolerates it. The transactional-outbox option (§11) is the documented
   upgrade if decision/genesis ROI is ever ruled audit-grade.
-- **Scaling assumption (stated, not hidden):** step 1's per-year
-  `id_counter` row under `SELECT … FOR UPDATE` serializes **all** RLS
-  submissions for the year on one lock. Sound at the design target
+- **Scaling assumption (stated, not hidden):** step 1's
+  `INSERT … ON CONFLICT (year) DO UPDATE` takes a row lock on the per-year
+  `id_counter` row, serializing **all** RLS submissions for the year on one
+  lock. Sound at the design target
   (≈ ≤1 submit/sec sustained — human county-attorney intake). Above that
   (bulk import, large multi-department rollout) the row lock is the
   throughput ceiling; revisit with hi-lo/block allocation or a
@@ -341,12 +403,21 @@ Parametrized so the **same suite runs against `_MockRepo` and `PgRepo`**:
 
 This is a legal-liability subsystem; the irreversible-ish decisions must be
 ADR'd in the repo's `DECISION_LOG.md`/ADR-### convention so future
-maintainers cannot silently "tidy" the anchor. The P1 implementation plan
-MUST include explicit tasks to author, at minimum:
+maintainers cannot silently "tidy" the anchor.
 
-- **ADR — Lineage canonicalization algorithm.** The §5.1(1–6)+§5.2
-  algorithm is normative and self-specified; not JCS; changing it is a
-  chain-breaking, version-gated event (`chain_version`). Highest-stakes ADR.
+**Precondition ADR — author and accept BEFORE `writing-plans` (not a plan
+task):**
+
+- **ADR — Lineage canonicalization + link algorithm.** The
+  §5.1(1–6) + §5.2 byte construction is the normative, self-specified legal
+  anchor; not JCS; changing it is a chain-breaking, `chain_version`-gated
+  event. Because the entire P1 plan builds on this algorithm and it is
+  effectively irreversible once a single real chain exists, its ADR is part
+  of *this design's acceptance*, not deferred into the plan.
+
+**Plan-task ADRs — the P1 implementation plan MUST include explicit tasks to
+author, at minimum:**
+
 - **ADR — Genesis at explicit Submit** (not at intake): Lock #19 privileged-
   matter hygiene rationale + the abandoned-draft-never-persists consequence.
 - **ADR — `DEV_AUTH_BYPASS` selects the persistence backend**: the
