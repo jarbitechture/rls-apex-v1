@@ -20,7 +20,11 @@ test('fetches /api/cao/brief on connect and renders bullets', async () => {
   expect(el.shadowRoot.textContent).toMatch(/risk text/);
 });
 
-test('decision buttons render and clicking shows toast', async () => {
+// GAP-2 (#41 parity audit, Option A): no production decision-write endpoint
+// exists, so the CAO action buttons must follow the app's deferral pattern
+// (disabled + v0.2.1 tooltip, like submit-panel / cure-path Mark Done)
+// instead of looking actionable but only toasting.
+test('decision buttons are disabled with a v0.2.1 deferral tooltip (no toast on click)', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
     rlsId: 'X', summary: [], keyFacts: [], risk: '', suggestedNextSteps: [],
   }) })));
@@ -29,8 +33,16 @@ test('decision buttons render and clicking shows toast', async () => {
   document.body.appendChild(el);
   await new Promise(r => setTimeout(r, 30));
   await el.updateComplete;
-  const accept = [...el.shadowRoot.querySelectorAll('button')].find(b => b.textContent.includes('Accept'));
-  accept.click();
+
+  const btns = [...el.shadowRoot.querySelectorAll('button')]
+    .filter(b => /Accept|Return|Reject/.test(b.textContent));
+  expect(btns).toHaveLength(3);
+  for (const b of btns) {
+    expect(b.disabled).toBe(true);
+    expect(b.title).toMatch(/v0\.2\.1/);
+  }
+  // A disabled button does not dispatch click → no toast appears.
+  btns[0].click();
   await el.updateComplete;
-  expect(el.shadowRoot.textContent).toMatch(/v0\.2\.1/);
+  expect(el.shadowRoot.querySelector('.toast')).toBeNull();
 });

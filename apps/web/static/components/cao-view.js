@@ -49,9 +49,10 @@ export class CaoView extends LitElement {
         <ul>${b.suggestedNextSteps.map(s => html`<li>${s}</li>`)}</ul>
       </div>
       <div class="actions">
-        <button class="accept" @click=${() => this._decision('Accept')}>Accept</button>
-        <button class="return" @click=${() => this._decision('Return')}>Return</button>
-        <button class="reject" @click=${() => this._decision('Reject')}>Reject</button>
+        ${['Accept', 'Return', 'Reject'].map(kind => html`
+          <button class=${kind.toLowerCase()} disabled
+                  title="CAO decision write goes live in v0.2.1 with update_rls_status"
+                  @click=${() => this._decision(kind)}>${kind}</button>`)}
       </div>
       ${this._toast ? html`<div class="toast">${this._toast}</div>` : ''}
     `;
