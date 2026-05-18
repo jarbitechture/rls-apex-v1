@@ -4,19 +4,26 @@
 
 ## Status
 
-Proof of Concept. Not for production deployment.
+Pilot. Not yet for production deployment. Production track (v0.3+) still gated
+on PM assignment + security signoff + infrastructure signoff (GPU strategy,
+deployment topology).
 
-Production track (v0.3+) is gated on:
-- PM assignment
-- Security review signoff
-- Infrastructure signoff (GPU strategy, deployment topology)
-
-> **Status:** v0.1.0 scaffold. Gateway + retrieval + agent dispatcher are real and wired. The LLM call itself is mocked behind a multi-provider seam (`LLM_PROVIDER=ollama|sglang|openai|mock`) — flip it on when SGLang lands on `bcc-ap-infer01`.
+> **Status (2026-05-18):** Well past scaffold. `v0.2.1a-rc2` tagged; Streams
+> A/B/C/D executed (web ingestion, redaction pipeline, hybrid retrieval, L1/L2/
+> L14 + W8 aggregated health). Backend + frontend test suites green (`pytest`
+> + Vitest). P1 (RLS persistence + lineage genesis) is specified and
+> architecture-reviewed; P2 (CAO decision-write) decisions are captured.
+> The LLM call remains behind the multi-provider seam
+> (`LLM_PROVIDER=ollama|sglang|openai|mock`).
+> **Authoritative current state: [`DECISION_LOG.md`](./DECISION_LOG.md),
+> [`CLAUDE.md`](./CLAUDE.md), and `docs/superpowers/specs/`.** The v0.1.0-era
+> Layout / Two-week / Non-goals sections below are retained as historical
+> context — trust the decision log + specs over them where they differ.
 
 ## What this is
 
 ```
-Surface     React UI (lifts prototype) · Entra ID OIDC · Static Web App
+Surface     Lit 3.2.1 web components (vendored, no build) · Entra ID OIDC (real authn pending; pilot runs DEV_AUTH_BYPASS)
 Harness     Claude Agent SDK pattern — agents = system prompt + skills + tool allowlist
 Tools       MCP servers (FastMCP 2.0, separate processes, RS256 JWT, loopback)
 Skills      ./skills/templates/*.md  — versioned in git, hot-loaded
@@ -49,7 +56,7 @@ rls-apex-v1/
 ├── RUNBOOK.md
 ├── domain.yaml                   single source → Pydantic + Alembic + MCP schemas
 ├── apps/
-│   ├── web/                      React UI rewired to gateway via SSE
+│   ├── web/                      Lit 3.2.1 web components (vendored, no build); legacy React SPA deleted 2026-05-18
 │   └── gateway/                  FastAPI · MSAL OIDC · Phoenix instr · MCP host · ROI sidecar
 ├── mcp-tools/                    Each = systemd unit, FastMCP 2.0, RS256 JWT, loopback
 │   ├── retrieve/                 BM25 + LightRAG + Contextual Retrieval (pgvector + AGE)
