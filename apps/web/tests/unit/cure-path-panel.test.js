@@ -17,10 +17,30 @@ test('renders cure steps with disabled Mark Done', async () => {
   expect(btn.disabled).toBe(true);
 });
 
-test('empty state when no cure steps', async () => {
+test('empty state when no cure steps and no blocking', async () => {
   const el = document.createElement('cure-path-panel');
   el.store = createStore();
   document.body.appendChild(el);
   await el.updateComplete;
   expect(el.shadowRoot.textContent).toMatch(/No cure steps/);
+});
+
+// GAP-1 (#41 parity audit): backend ValidationResult has no `cureSteps`, so
+// the panel must NOT claim "ReadyForCAO" while blocking issues exist.
+test('blocking issues present → no false ReadyForCAO, prompts to resolve', async () => {
+  const store = createStore();
+  store.update('draft', d => {
+    d.blocking = [
+      { code: 'MISSING_DOC', message: 'Attach approval' },
+      { code: 'NO_DEPT', message: 'Department required' },
+    ];
+    // cureSteps intentionally left [] — the real backend never sends it.
+  });
+  const el = document.createElement('cure-path-panel');
+  el.store = store;
+  document.body.appendChild(el);
+  await el.updateComplete;
+  const txt = el.shadowRoot.textContent;
+  expect(txt).not.toMatch(/ReadyForCAO/);
+  expect(txt).toMatch(/Resolve the 2 required items in Step 3/);
 });

@@ -25,11 +25,15 @@ export class CurePathPanel extends LitElement {
 
   render() {
     const steps = this.store?.draft.cureSteps ?? [];
+    // GAP-1: backend ValidationResult carries no cureSteps, so an empty
+    // `steps` does NOT mean "ready" — gate the ReadyForCAO message on the
+    // real signal (blocking issues). cureSteps stays as the future v0.2.1
+    // populated-cure-path seam.
+    const blockingCount = this.store?.draft.blocking?.length ?? 0;
     return html`
       <h2>Step 4 — Cure path</h2>
-      ${steps.length === 0
-        ? html`<div class="empty">No cure steps — status is ReadyForCAO. Continue to Submit.</div>`
-        : steps.map(s => html`
+      ${steps.length > 0
+        ? steps.map(s => html`
             <div class="step">
               <div class="title">Step ${s.step} — ${s.title}</div>
               <div>${s.instruction}</div>
@@ -37,7 +41,10 @@ export class CurePathPanel extends LitElement {
               <button class="mark-done" disabled
                       title="Goes live in v0.2.1 with check_attachment_metadata">Mark Done</button>
             </div>
-          `)}
+          `)
+        : blockingCount > 0
+          ? html`<div class="empty">Resolve the ${blockingCount} required item${blockingCount === 1 ? '' : 's'} in Step 3 before CAO review.</div>`
+          : html`<div class="empty">No cure steps — status is ReadyForCAO. Continue to Submit.</div>`}
       <div class="actions">
         <button class="secondary" @click=${() => navigateToStep('status')}>← Back to Status</button>
       </div>
