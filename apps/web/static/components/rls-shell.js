@@ -5,7 +5,7 @@ import * as api from '../core/api.js';
 import { attachRouter, parseLocation } from '../core/router.js';
 import { attachValidatorRunner } from '../core/automation/validator-runner.js';
 import { attachAutoCorrect } from '../core/automation/auto-correct.js';
-import { attachSmartSurface } from '../core/automation/smart-surface.js';
+import { attachSmartSurface, breakersToMap } from '../core/automation/smart-surface.js';
 
 import './app-header.js';
 import './rls-disclaimer-banner.js';
@@ -69,7 +69,7 @@ export class RlsShell extends LitElement {
   async _pollBreakers() {
     try {
       const r = await api.fetchBreakers();
-      this.store.update('errorState', e => { e.breakerStatus = r.breakers || {}; });
+      this.store.update('errorState', e => { e.breakerStatus = breakersToMap(r.breakers); });
     } catch { /* silent — banner via smart-surface picks it up if needed */ }
     setTimeout(() => this._pollBreakers(), BREAKER_POLL_MS);
   }

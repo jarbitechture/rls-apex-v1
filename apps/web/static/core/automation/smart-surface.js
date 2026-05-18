@@ -1,5 +1,15 @@
 const FRESH_FAILURE_WINDOW_MS = 30_000;
 
+// GAP-3: /api/health/breakers returns a list [{name,state,...}]; the surface
+// derivation below expects a {name:state} map. Normalize at the boundary.
+// Tolerates the already-map shape (legacy/tests) and nullish input.
+export function breakersToMap(breakers) {
+  if (Array.isArray(breakers)) {
+    return Object.fromEntries(breakers.map(b => [b.name, b.state]));
+  }
+  return breakers || {};
+}
+
 export function computeSurface({ blocking, blurredFields, breakerStatus, validatorFailures }) {
   const fieldErrors = {};
   for (const issue of blocking || []) {
