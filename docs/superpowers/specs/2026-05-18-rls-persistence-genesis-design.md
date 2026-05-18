@@ -140,7 +140,8 @@ Precondition (server-side): payload validates with `blocking == 0`.
 
 One PG transaction, **ordered so the idempotency-replay path works**:
 
-1. **Mint `rls_id` first.** `INSERT INTO id_counter(year, next_seq)
+1. **Mint `rls_id` first.** `:yr` = the **calendar year** (UTC) of submission;
+   `:yy` = its last two digits. `INSERT INTO id_counter(year, next_seq)
    VALUES (:yr, 1) ON CONFLICT (year) DO NOTHING;` then
    `SELECT next_seq FROM id_counter WHERE year=:yr FOR UPDATE;`
    `UPDATE id_counter SET next_seq = next_seq + 1 WHERE year=:yr;`
@@ -268,10 +269,9 @@ Parametrized so the **same suite runs against `_MockRepo` and `PgRepo`**:
 
 ## 12. Uncertainties / open questions
 
-- **Year-rollover semantics for `id_counter`:** first submit of a new calendar
-  year initializes a fresh row at `next_seq=1`. If the county requires a
-  fiscal-year (not calendar-year) numbering, the `:yr` key derivation changes
-  — flag for the records-management owner before implementation.
+- **Year-rollover semantics for `id_counter`:** RESOLVED — **calendar year
+  (UTC)**, decided 2026-05-18. First submit of a new calendar year initializes
+  a fresh row at `next_seq=1` (§6 step 1). Not fiscal-year.
 - **`get_lineage` exposure:** this spec adds the repo method + reserves a
   read endpoint, but the auditor-facing UI/endpoint surface is left to P2 or a
   later audit-UX pass (not required for P1 correctness; `verify_chain` is
