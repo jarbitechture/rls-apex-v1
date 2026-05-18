@@ -49,7 +49,7 @@ in v0.2.1") is enabled — it is the genesis trigger.
 | Submit safety | Duplicate-submit protection + id allocation | DB-allocated `rls_id` + shared **idempotency key** (`audit_event.UNIQUE(idempotency_key)` is the primitive). |
 | Backend topology | Persistence shape | **Approach 1**: one `repository.py` interface; env-gated backend; `get_repo` resolves **per-request**. |
 | Official-ID contiguity | Sequence vs counter | **Per-year counter row** (`SELECT … FOR UPDATE`) inside the genesis tx → contiguous, transactional, no gaps. Contention is a non-issue at human submission volume. |
-| Canonicalization | Hash determinism | **Strict string-only profile**, documented as an RFC 8785-conformant profile, `chain_version` in payload, no new runtime dependency. |
+| Canonicalization | Hash determinism | **Strict string-only profile**, self-specified algorithm (§5.1 rules 1–6, *not* JCS), `chain_version` in payload, no new runtime dependency. |
 | Tx model | Write topology | Approach-A (reused from P2): one PG tx; post-commit fire-and-forget ROI; tool→PG breaker **fail-loud** (Lock #18). |
 
 ## 4. Architecture — repository + env-gated backend
@@ -103,14 +103,30 @@ The hashed `payload` MUST satisfy:
    arrays.** Absence is expressed by omitting the key (never a null value).
 2. Timestamps are ISO-8601 UTC with a trailing `Z`, second precision:
    `YYYY-MM-DDTHH:MM:SSZ`.
-3. String values are Unicode NFC-normalized.
+3. String values are Unicode NFC-normalized. (Stability: the Unicode
+   Normalization Stability policy guarantees NFC is invariant for
+   already-assigned characters across Unicode versions, so an auditor
+   recomputing years later gets identical output for any character that
+   existed when the event was written.)
 4. `payload` always includes `chain_version: "1"`.
+5. Object keys are sorted ascending by Unicode code point (Python
+   `str` ordering). All keys in this profile are ASCII, so this is
+   unambiguous.
+6. String escaping is exactly Python `json.dumps(..., ensure_ascii=False)`:
+   `"` → `\"`, `\` → `\\`, U+0008 → `\b`, U+0009 → `\t`, U+000A → `\n`,
+   U+000C → `\f`, U+000D → `\r`, all other control chars U+0000–U+001F →
+   `\u00XX` (lowercase hex), every other character (incl. all non-ASCII)
+   emitted literally as UTF-8. `/` is NOT escaped.
 
 Canonical bytes =
 `json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`
-encoded UTF-8, over a payload meeting (1)–(4). For this restricted
-(strings-only) domain this output is RFC 8785-conformant; the number-form
-hazards JCS exists to solve cannot arise.
+encoded UTF-8, over a payload meeting (1)–(6).
+
+**This is THE canonical algorithm — rules (1)–(6) are the normative
+definition.** It is *not* RFC 8785 (JCS) and a JCS library MUST NOT be
+assumed to reproduce it (JCS mandates UTF-16 code-unit key ordering and a
+distinct escaping table). An auditor reimplements tamper-evidence from
+rules (1)–(6) and §5.2 alone — not from any external standard.
 
 ### 5.2 Link function
 
@@ -121,9 +137,13 @@ compute_link(prev_hash, sequence, payload) =
                 | "\x1f" | canonical_bytes(payload) )
 ```
 
-`\x1f` (ASCII Unit Separator) is the field delimiter — it cannot appear in the
-NFC-normalized JSON or hex inputs, so the concatenation is unambiguous.
-Genesis: `prev_hash=None`, `sequence=1` → literal `"GENESIS"` sentinel.
+`\x1f` (ASCII Unit Separator) is the field delimiter, and the concatenation
+is unambiguous because **no field can contain a raw 0x1F byte**: `prev_hash`
+is 64-hex (or the literal `GENESIS`), `str(sequence)` is ASCII digits, and
+`canonical_bytes` cannot contain raw 0x1F because §5.1 rule (6) escapes every
+control char U+0000–U+001F (incl. U+001F itself, even if a user typed one)
+to its 6-character backslash-u escape (the characters backslash, `u`, `0`, `0`, `1`, `f`) — so no raw 0x1F byte survives into `canonical_bytes`. Genesis: `prev_hash=None`, `sequence=1` →
+literal `"GENESIS"` sentinel.
 
 ### 5.3 verify_chain
 
@@ -149,12 +169,21 @@ One PG transaction, **ordered so the idempotency-replay path works**:
    rollback consumes no number (contiguous official IDs).
 2. `INSERT INTO audit_event (rls_id, actor_id, actor_role, action,
    payload, idempotency_key) VALUES (…, 'rls.create', …, :key);`
-   The `UNIQUE(idempotency_key)` constraint is the dedup gate. On
-   unique-violation → roll back; then in a fresh read
+   `audit_event.payload` here is the **request envelope** (raw submitted
+   `rlsPayload` + actor + `ts` + `idempotency_key`) — distinct from the
+   lineage `payload₁` of step 3; it is the "what was requested" record, not
+   the canonical hashed snapshot. The `UNIQUE(idempotency_key)` constraint
+   is the dedup gate. A unique-violation **aborts the entire PG transaction**
+   (Postgres rejects all further statements in it). So the replay path MUST:
+   catch the violation → roll back this tx → open a **separate** tx →
    `SELECT rls_id FROM audit_event WHERE idempotency_key=:key` →
    `get_rls(rls_id)` → return the existing record (HTTP 200, no second
-   privileged row). `audit_event.rls_id` is populated here (step 1 ran first),
-   which is why the replay lookup resolves.
+   privileged row). `audit_event.rls_id` was populated by the *original*
+   winning tx (its step 1 ran first), which is why the lookup resolves.
+   Same-key races are serialized by step 1's `SELECT … FOR UPDATE` on the
+   counter row, so the idempotency outcome is deterministic (the second
+   submitter blocks until the first commits, then deterministically hits the
+   unique-violation replay path).
 3. Build `payload₁` (canonical profile §5.1 — every value a string):
    `{chain_version:"1", rls_id, type, subject, department, contact_name,
    contact_extension, classification, actor_id, authn:"pilot_bypass", ts}`,
@@ -290,7 +319,38 @@ Parametrized so the **same suite runs against `_MockRepo` and `PgRepo`**:
 - **Resilience:** the only cross-process hop in the write path is the
   post-commit ROI emit, deliberately fire-and-forget with breaker + JSONL
   fallback. The PG write is one ACID tx with a fail-loud breaker. No
-  distributed saga — there is nothing to compensate.
-- **Audit:** tamper-evidence is a public, spec-documented algorithm
-  (RFC 8785-conformant profile), independently recomputable years later
-  without our source.
+  distributed saga — there is nothing to compensate. **Named gap:** if the
+  process dies in the window between tx-commit and the post-commit emit
+  reaching the breaker/JSONL, that genesis has a committed legal record but
+  *no* ROI `tool_invocation` (at-most-once ROI). This is accepted — ROI
+  never blocks the user action (Rule #18) and the renewal/Power-BI use case
+  tolerates it. The transactional-outbox option (§11) is the documented
+  upgrade if decision/genesis ROI is ever ruled audit-grade.
+- **Scaling assumption (stated, not hidden):** step 1's per-year
+  `id_counter` row under `SELECT … FOR UPDATE` serializes **all** RLS
+  submissions for the year on one lock. Sound at the design target
+  (≈ ≤1 submit/sec sustained — human county-attorney intake). Above that
+  (bulk import, large multi-department rollout) the row lock is the
+  throughput ceiling; revisit with hi-lo/block allocation or a
+  sequence-plus-gap-tolerance scheme. Not a P1 concern; a documented limit.
+- **Audit:** tamper-evidence is a fully self-specified algorithm (§5.1
+  rules 1–6 + §5.2), independently recomputable years later from this
+  document alone — deliberately *not* delegated to an external standard.
+
+## 14. Required ADRs (writing-plans MUST produce these)
+
+This is a legal-liability subsystem; the irreversible-ish decisions must be
+ADR'd in the repo's `DECISION_LOG.md`/ADR-### convention so future
+maintainers cannot silently "tidy" the anchor. The P1 implementation plan
+MUST include explicit tasks to author, at minimum:
+
+- **ADR — Lineage canonicalization algorithm.** The §5.1(1–6)+§5.2
+  algorithm is normative and self-specified; not JCS; changing it is a
+  chain-breaking, version-gated event (`chain_version`). Highest-stakes ADR.
+- **ADR — Genesis at explicit Submit** (not at intake): Lock #19 privileged-
+  matter hygiene rationale + the abandoned-draft-never-persists consequence.
+- **ADR — `DEV_AUTH_BYPASS` selects the persistence backend**: the
+  deliberate auth-bypass/store-choice coupling and its accepted limitation
+  (§4) — recorded so it is never mistaken for an accident.
+- **ADR — Per-year `id_counter` row over a sequence**: contiguity/no-gap
+  legal-numbering rationale vs. the single-lock scaling limit (§13).
