@@ -32,7 +32,8 @@ _roi_client: RoiClient | None = None
 def _get_roi_client() -> RoiClient:
     global _roi_client
     if _roi_client is None:
-        endpoint = os.environ.get("ROI_SIDECAR_ENDPOINT", "http://localhost:8001/events")
+        # Pass the sidecar BASE URL only — RoiClient appends /v1/events.
+        endpoint = os.environ.get("ROI_SIDECAR_ENDPOINT", "http://localhost:8001")
         _roi_client = RoiClient(endpoint=endpoint)
     return _roi_client
 
