@@ -29,3 +29,29 @@ def test_canonical_bytes_escapes_control_chars_no_raw_0x1f():
     out = canonical_bytes({"a": "x\x1fy", "chain_version": "1"})
     assert b"\x1f" not in out
     assert b"\\u001f" in out
+
+
+# append to tests/test_lineage.py
+from apps.gateway.db.lineage import compute_link
+import hashlib
+
+
+def test_compute_link_genesis_known_answer():
+    payload = {"chain_version": "1", "rls_id": "RLS-26-0001"}
+    expected = hashlib.sha256(
+        b"GENESIS" + b"\x1f" + b"1" + b"\x1f"
+        + b'{"chain_version":"1","rls_id":"RLS-26-0001"}'
+    ).hexdigest()
+    got = compute_link(None, 1, payload)
+    assert got == expected
+    assert len(got) == 64 and got == got.lower()
+
+
+def test_compute_link_non_genesis_uses_prev_hash():
+    prev = "a" * 64
+    payload = {"chain_version": "1", "x": "y"}
+    expected = hashlib.sha256(
+        prev.encode("ascii") + b"\x1f" + b"2" + b"\x1f"
+        + b'{"chain_version":"1","x":"y"}'
+    ).hexdigest()
+    assert compute_link(prev, 2, payload) == expected

@@ -45,3 +45,20 @@ def canonical_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(
         norm, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
+
+
+# append to apps/gateway/db/lineage.py
+def compute_link(prev_hash: str | None, sequence: int, payload: dict[str, Any]) -> str:
+    """§5.2 link. Genesis = prev_hash None → literal b"GENESIS" sentinel.
+
+    sha256( (prev_hash or "GENESIS").ascii + 0x1F + str(seq).ascii + 0x1F
+            + canonical_bytes(payload) ).hexdigest()  — lowercase 64-hex.
+    """
+    head = (prev_hash or "GENESIS").encode("ascii")
+    return hashlib.sha256(
+        head
+        + b"\x1f"
+        + str(sequence).encode("ascii")
+        + b"\x1f"
+        + canonical_bytes(payload)
+    ).hexdigest()
