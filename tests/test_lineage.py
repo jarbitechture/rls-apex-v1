@@ -90,3 +90,20 @@ def test_verify_chain_rejects_tamper_reorder_and_missing_genesis():
     assert verify_chain([_mk(2, g.this_hash)]) is False    # no genesis (seq!=1)
     broken = _Ev(2, "f" * 64, e2.this_hash, e2.payload)
     assert verify_chain([g, broken]) is False              # broken prev link
+
+
+# append to tests/test_lineage.py
+from apps.gateway.db.lineage import content_idempotency_key
+
+
+def test_idem_key_is_stable_for_same_content_order_independent():
+    a = {"subject": "Lease X", "department": "Legal", "legal_question": "Q?"}
+    b = {"legal_question": "Q?", "department": "Legal", "subject": "Lease X"}
+    assert content_idempotency_key(a) == content_idempotency_key(b)
+    assert len(content_idempotency_key(a)) == 64
+
+
+def test_idem_key_changes_on_material_edit():
+    a = {"subject": "Lease X", "department": "Legal"}
+    b = {"subject": "Lease Y", "department": "Legal"}
+    assert content_idempotency_key(a) != content_idempotency_key(b)

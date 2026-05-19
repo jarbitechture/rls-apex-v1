@@ -83,3 +83,22 @@ def verify_chain(events: list) -> bool:
         if compute_link(ev.prev_hash, ev.sequence, ev.payload) != ev.this_hash:
             return False
     return True
+
+
+# append to apps/gateway/db/lineage.py
+def content_idempotency_key(rls_payload: dict[str, Any]) -> str:
+    """§7(b): deterministic digest of the submitted draft content.
+
+    Stringifies every value (the §5.1 profile is string-only), then hashes
+    the canonical bytes. Content-stable by construction — same draft yields
+    the same key across refresh / new session / lost-response retry, with
+    no server state. The server treats this as OPAQUE (it never recomputes
+    or trusts it; UNIQUE(idempotency_key) is the sole enforcement).
+    """
+    flat = {
+        k: ("" if v is None else v if isinstance(v, str) else json.dumps(
+            v, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+        for k, v in rls_payload.items()
+    }
+    flat["chain_version"] = CHAIN_VERSION
+    return hashlib.sha256(canonical_bytes(flat)).hexdigest()
