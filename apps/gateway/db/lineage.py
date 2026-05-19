@@ -62,3 +62,24 @@ def compute_link(prev_hash: str | None, sequence: int, payload: dict[str, Any]) 
         + b"\x1f"
         + canonical_bytes(payload)
     ).hexdigest()
+
+
+# append to apps/gateway/db/lineage.py
+def verify_chain(events: list) -> bool:
+    """§5.3: ordered events for one rls_id. Returns False on any failure.
+
+    Each event needs attributes: sequence:int, prev_hash:str|None,
+    this_hash:str, payload:dict.
+    """
+    if not events:
+        return False
+    for i, ev in enumerate(events):
+        expected_seq = i + 1
+        if ev.sequence != expected_seq:
+            return False
+        prev = None if i == 0 else events[i - 1].this_hash
+        if ev.prev_hash != prev:
+            return False
+        if compute_link(ev.prev_hash, ev.sequence, ev.payload) != ev.this_hash:
+            return False
+    return True

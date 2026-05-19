@@ -55,3 +55,38 @@ def test_compute_link_non_genesis_uses_prev_hash():
         + b'{"chain_version":"1","x":"y"}'
     ).hexdigest()
     assert compute_link(prev, 2, payload) == expected
+
+
+# append to tests/test_lineage.py
+from apps.gateway.db.lineage import verify_chain
+from dataclasses import dataclass
+
+
+@dataclass
+class _Ev:
+    sequence: int
+    prev_hash: str | None
+    this_hash: str
+    payload: dict
+
+
+def _mk(seq, prev):
+    p = {"chain_version": "1", "n": str(seq)}
+    return _Ev(seq, prev, compute_link(prev, seq, p), p)
+
+
+def test_verify_chain_accepts_valid_chain():
+    g = _mk(1, None)
+    e2 = _mk(2, g.this_hash)
+    assert verify_chain([g, e2]) is True
+
+
+def test_verify_chain_rejects_tamper_reorder_and_missing_genesis():
+    g = _mk(1, None)
+    e2 = _mk(2, g.this_hash)
+    tampered = _Ev(2, g.this_hash, e2.this_hash, {"chain_version": "1", "n": "X"})
+    assert verify_chain([g, tampered]) is False           # payload tampered
+    assert verify_chain([e2, g]) is False                  # reordered
+    assert verify_chain([_mk(2, g.this_hash)]) is False    # no genesis (seq!=1)
+    broken = _Ev(2, "f" * 64, e2.this_hash, e2.payload)
+    assert verify_chain([g, broken]) is False              # broken prev link
