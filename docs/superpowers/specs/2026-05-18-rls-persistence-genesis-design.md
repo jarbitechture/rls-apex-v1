@@ -251,13 +251,24 @@ different key.
 privileged-row guarantee rests on the same logical submission carrying the
 same key across a retry. A freshly-random key minted per click would defeat
 dedup: a dropped-response retry after a refresh would create a *second*
-genesis (new `rls_id`, new official number) for one matter. Therefore the
-key MUST be stable across retries of the same submission, by one of:
-(a) server-minted on draft-open and echoed back on Submit (preferred — the
-client cannot get it wrong), or (b) a deterministic digest of the canonical
-draft content. It MUST NOT be `uuid4()` generated at click time. P1 owns the
-submit-panel, so P1 implements (a). Required test: *same draft, new browser
-session/refresh, Submit twice* → exactly one `rls` row.
+genesis (new `rls_id`, new official number) for one matter.
+
+**Decision (2026-05-19): the `idempotency_key` is a deterministic digest of
+the canonical draft content** — `sha256` over the same strict string-only
+canonical serialization defined in §5.1 (rules 1–6) applied to the submitted
+`rlsPayload` fields, hex. It is computed client-side at Submit and sent in
+the request. Rationale: it is content-stable by construction (same draft →
+same key across refresh, new browser session, or a lost-response retry,
+with no server state), so it requires **no draft-open endpoint and no change
+to §2 scope / §3 stateless-until-Submit / §4 interface** (option (a) was
+rejected precisely because a server-minted-on-draft-open key presupposes a
+draft-open round-trip this design does not have). It MUST NOT be `uuid4()`
+or any per-click random value, and the server MUST treat the key as opaque
+(it does not recompute/trust it — `UNIQUE(idempotency_key)` is still the
+sole enforcement). Genuinely distinct submissions differ in content →
+different digest → different key. Required test: *same draft, new browser
+session / refresh, Submit twice* → exactly one `rls` row; *materially
+edited draft, Submit* → a new `rls` row.
 
 ## 8. DEV parity & read-path migration
 
