@@ -197,3 +197,36 @@ class PgRepo:
             for r in rows
         ]
 
+    def _row_to_record(self, row: Any) -> RlsRecord:
+        return RlsRecord(
+            rls_id=row["rls_id"],
+            matter_id=row["matter_id"],
+            classification=row["classification"],
+            status=RlsStatus(row["status"]),
+            type=RlsType(row["type"]),
+            subject=row["subject"],
+            department=row["department"],
+            contact_name=row["contact_name"],
+            contact_extension=row["contact_extension"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            lineage_head=row["lineage_head"],
+        )
+
+    async def list_for_cao(self, *, status: RlsStatus = RlsStatus.READY_FOR_CAO) -> list[RlsRecord]:
+        sv = status.value if hasattr(status, "value") else status
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                "SELECT rls_id, matter_id, classification, status, type, subject, "
+                "department, contact_name, contact_extension, created_at, updated_at, "
+                "lineage_head FROM rls WHERE status=$1 ORDER BY rls_id",
+                sv)
+        return [self._row_to_record(r) for r in rows]
+
+    async def get_brief(self, rls_id: str) -> dict | None:
+        r = await self.get_rls(rls_id)
+        if r is None:
+            return None
+        return {"rlsId": r.rls_id, "summary": [r.subject], "keyFacts": [],
+                "risk": "", "suggestedNextSteps": []}
+
