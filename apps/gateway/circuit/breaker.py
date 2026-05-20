@@ -148,6 +148,10 @@ class CircuitBreaker:
                 if was_probe:
                     self._probe_in_flight = False
 
+    def force_open(self) -> None:
+        """Test hook: trip the breaker open immediately."""
+        self._opened_at = time.monotonic()
+
     def status(self) -> dict[str, Any]:
         """Health surface shape per spec §12.4."""
         return {

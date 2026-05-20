@@ -52,3 +52,34 @@ async def test_pg_get_and_list_and_brief(db_pool):
     assert [x.rls_id for x in lst] == [r.rls_id]
     brief = await repo.get_brief(r.rls_id)
     assert brief["rlsId"] == r.rls_id
+
+
+from apps.gateway.circuit import BreakerOpenError  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_pg_breaker_open_fails_loud_no_partial_write(db_pool):
+    repo = PgRepo(db_pool)
+    repo._breaker.force_open()  # test hook (Step 3)
+    with pytest.raises(BreakerOpenError):
+        await repo.create_rls(PAYLOAD, actor=ACTOR, idempotency_key="x")
+    async with db_pool.acquire() as c:
+        assert await c.fetchval("SELECT count(*) FROM rls") == 0
+        assert await c.fetchval("SELECT count(*) FROM lineage_event") == 0
+        assert await c.fetchval("SELECT count(*) FROM audit_event") == 0
+
+
+@pytest.mark.asyncio
+async def test_pg_idempotent_replay_does_not_trip_breaker(db_pool):
+    """5 same-key submits must not advance the breaker failure counter."""
+    repo = PgRepo(db_pool)
+    first = await repo.create_rls(PAYLOAD, actor=ACTOR, idempotency_key="dup")
+    # 5 more identical-key submits — each must return the same rls_id and
+    # the breaker must remain closed (no false trip).
+    for _ in range(5):
+        replay = await repo.create_rls(PAYLOAD, actor=ACTOR, idempotency_key="dup")
+        assert replay.rls_id == first.rls_id
+    # Breaker still closed: a genuine new write must succeed (would raise
+    # BreakerOpenError otherwise).
+    fresh = await repo.create_rls(PAYLOAD, actor=ACTOR, idempotency_key="real-new")
+    assert fresh.rls_id != first.rls_id
