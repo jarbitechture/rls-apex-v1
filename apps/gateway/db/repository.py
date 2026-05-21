@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
+import os
 from typing import Any, Protocol
 
 import asyncpg
@@ -241,4 +242,20 @@ class PgRepo:
             return None
         return {"rlsId": r.rls_id, "summary": [r.subject], "keyFacts": [],
                 "risk": "", "suggestedNextSteps": []}
+
+
+_memo: dict[str, object] = {}
+
+
+def get_repo(request) -> Repo:
+    """Per-request backend selection (NEVER at import — the DB pool is
+    created in the lifespan, after module load). DEV_AUTH_BYPASS or no
+    pool -> MockRepo; else PgRepo. Memoized after first real resolution."""
+    pool = getattr(getattr(request.app, "state", None), "db_pool", None)
+    if os.environ.get("DEV_AUTH_BYPASS") == "1" or pool is None:
+        return _memo.setdefault("mock", MockRepo())
+    key = "pg"
+    if key not in _memo or getattr(_memo[key], "_pool", None) is not pool:
+        _memo[key] = PgRepo(pool)
+    return _memo[key]
 
