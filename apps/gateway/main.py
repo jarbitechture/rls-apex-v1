@@ -464,7 +464,7 @@ async def api_rls_submit(req: Request, user: dict = Depends(current_user)) -> di
 
 
 @app.get("/api/cao/brief", tags=["cao"])
-async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
+async def cao_brief(rlsId: str, req: Request, user: dict = Depends(current_user)) -> dict:
     """Canned 3-bullet brief for the CAO reviewer panel.
     v0.2.0b stub — real content lands in v0.2.1 with the precedent corpus."""
     body = {
@@ -487,6 +487,11 @@ async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
             "Coordinate with Code Enforcement on litigation hold status.",
         ],
     }
+    # Repo-backed when it knows the id; else the v0.2.0b canned fixture above.
+    from apps.gateway.db.repository import get_repo
+    repo_brief = await get_repo(req).get_brief(rlsId)
+    if repo_brief is not None:
+        body = repo_brief
     emit_roi({
         "event_kind": "tool_invocation",
         "workflow": "rls_apex.cao_brief",
