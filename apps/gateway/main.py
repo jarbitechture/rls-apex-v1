@@ -422,6 +422,47 @@ async def api_validate(req: _ValidateRequest, user: dict = Depends(current_user)
 # ─── CAO brief (spec §5.7, v0.2.0b stub) ──────────────────────────
 
 
+@app.post("/api/rls/submit", tags=["rls"])
+async def api_rls_submit(req: Request, user: dict = Depends(current_user)) -> dict:
+    """Genesis: persist a new RLS at explicit Submit (Lock #21). One atomic
+    transaction (id + audit + rls + lineage) behind the fail-loud breaker;
+    BreakerOpenError -> 503. Post-commit fire-and-forget ROI (never blocks)."""
+    from apps.gateway.circuit import BreakerOpenError
+    from apps.gateway.db.repository import get_repo
+
+    body = await req.json()
+    payload = body.get("rlsPayload") or {}
+    idem = body.get("idempotency_key")
+    if not idem:
+        raise HTTPException(status_code=400, detail="idempotency_key required")
+    # Pilot bypass: actor_id is the configured pilot principal, NOT request
+    # free-text (spec §6 step 3 / Lock #19).
+    actor = {"actor_id": user.get("upn") or "pilot_principal",
+             "actor_role": user.get("role_band", "requester")}
+    repo = get_repo(req)
+    try:
+        rec = await repo.create_rls(payload, actor=actor, idempotency_key=idem)
+    except BreakerOpenError:
+        raise HTTPException(status_code=503, detail="persistence unavailable")
+    chain = await repo.get_lineage(rec.rls_id)
+    # Post-commit, fire-and-forget ROI (W1 ordering; never blocks — Rule #18).
+    try:
+        emit_roi({
+            "event_kind": "tool_invocation", "workflow": "rls_apex.submit",
+            "tool": "rls_apex", "surface": "other",
+            "user_id": user.get("upn", "unknown"),
+            "dept": user.get("dept", "DEV"),
+            "role_band": user.get("role_band", "professional"),
+            "task_type": "validation", "success": True,
+        })
+    except Exception:
+        pass  # ROI never blocks the user action (Rule #18)
+    head = chain[-1]
+    return {"rls_id": rec.rls_id, "status": rec.status.value,
+            "lineage_receipt": {"sequence": head.sequence,
+                                "this_hash": head.this_hash}}
+
+
 @app.get("/api/cao/brief", tags=["cao"])
 async def cao_brief(rlsId: str, user: dict = Depends(current_user)) -> dict:
     """Canned 3-bullet brief for the CAO reviewer panel.
