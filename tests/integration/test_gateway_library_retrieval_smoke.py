@@ -50,9 +50,10 @@ async def test_call_l4_get_policy_snippets_returns_seeded_rows(seeded_corpus):
                 topic_or_field="permit", k=5
             )
     finally:
-        # Always reset singleton so downstream tests are not polluted by this
-        # test's injected pool.
+        # Always reset the singleton AND the injected pool so downstream tests
+        # are not polluted by this test's injected (and soon-closed) pool.
         gw_main._lint_retriever = None
+        gw_main.app.state.db_pool = None
 
     # --- Shape assertions ---
     assert isinstance(result, dict), "result must be a dict"
