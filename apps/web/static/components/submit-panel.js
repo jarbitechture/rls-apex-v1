@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { navigateToStep } from '../core/router.js';
+import { postSubmit } from '../core/api.js';
 
 export class SubmitPanel extends LitElement {
   static properties = { store: { attribute: false }, _ver: { state: true } };
@@ -10,7 +11,7 @@ export class SubmitPanel extends LitElement {
           border-radius: 4px; overflow-x: auto; cursor: copy; font-size: 12px; }
     pre.copied::after { content: ' ✓ Copied'; color: var(--success, #2e7d32); }
     button.submit { padding: 10px 20px; background: var(--primary, #036); color: white;
-                    border: none; border-radius: 4px; opacity: 0.5; cursor: not-allowed; }
+                    border: none; border-radius: 4px; cursor: pointer; }
     .note { margin-top: 16px; color: var(--ink-3, #555); font-size: 13px; }
   `;
 
@@ -27,6 +28,24 @@ export class SubmitPanel extends LitElement {
     setTimeout(() => e.currentTarget.classList.remove('copied'), 1500);
   }
 
+  async _digest(obj) {
+    const sorted = {};
+    for (const k of Object.keys(obj).sort()) sorted[k] = String(obj[k] ?? '');
+    sorted.chain_version = '1';
+    const json = JSON.stringify(sorted);
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(json));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async _submit() {
+    const payload = this.store?.draft.rlsPayload ?? {};
+    const idempotency_key = await this._digest(payload);
+    const res = await postSubmit({ rlsPayload: payload, idempotency_key });
+    this.store.update('draft', d => { d.rlsId = res.rls_id; });
+    this._submitted = res;
+    this.requestUpdate();
+  }
+
   render() {
     const payload = this.store?.draft.rlsPayload ?? {};
     return html`
@@ -35,13 +54,10 @@ export class SubmitPanel extends LitElement {
         <strong>${payload.title || '(no title)'}</strong><br>
         Department: ${payload.department || '—'}
       </div>
-      <button class="submit" disabled
-              title="Submit goes live in v0.2.1 with update_rls_status. Pilot escape hatch: copy the JSON below and email to County Attorney.">
-        Submit
-      </button>
+      <button class="submit" @click=${() => this._submit()}>Submit</button>
       <p class="note">
-        Submit goes live in v0.2.1 with the <code>update_rls_status</code> tool. For the pilot,
-        click the JSON below to copy and email it to the County Attorney's office.
+        Submit persists the RLS and returns a lineage receipt. The JSON below
+        stays copyable as a record.
       </p>
       <pre @click=${this._copy}>${JSON.stringify(payload, null, 2)}</pre>
       <button @click=${() => navigateToStep('cure')}>← Back to Cure path</button>

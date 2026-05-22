@@ -35,3 +35,11 @@ export async function fetchCaoBrief(rlsId) {
 export async function fetchBreakers() {
   return jsonOrThrow(await fetch('/api/health/breakers'));
 }
+
+export async function postSubmit(body) {
+  return jsonOrThrow(await fetch('/api/rls/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+}
