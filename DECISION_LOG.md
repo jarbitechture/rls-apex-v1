@@ -364,3 +364,34 @@ Every action emits a ROI event using schema 1.1.0:
 **Rationale:** A legal tamper-evidence anchor must be independently recomputable years later from a written specification, by someone who does not have (or trust) our codebase. Constraining the payload to strings-only sidesteps JSON's only hard canonicalization problem (number forms) and makes the documented profile genuinely sufficient. No runtime dependency keeps it inside county supply-chain governance. `chain_version` gives forward evolvability without ever silently invalidating prior chains.
 
 **Reversal cost:** **Very high — effectively irreversible once a single real chain exists.** Any change to §5.1/§5.2 retroactively breaks `verify_chain` for every prior `lineage_event`. The only forward-safe path is a new `chain_version` that keeps the v1 algorithm available for historical verification in perpetuity. This irreversibility is precisely why this lock is a **precondition to `writing-plans`**, authored and accepted as part of P1 design sign-off rather than deferred into the implementation plan.
+
+
+---
+
+## Lock #21 — RLS genesis at explicit Submit (not at intake)
+
+**Decision:** A durable `rls` row + genesis `lineage_event` is created ONLY at explicit Submit (after validate, `blocking==0`), never at `/api/intake`. Drafts stay client-side until Submit.
+
+**Rationale:** Lock #19 privileged-matter hygiene — every half-typed exploratory legal question persisted as a durable privileged row is an ACL/records-retention liability. Intake/validate stay stateless (spec §1/§3).
+
+**Reversal cost:** Low — adding draft autosave later is additive; no chain rewrite.
+
+---
+
+## Lock #22 — `DEV_AUTH_BYPASS` selects the persistence backend
+
+**Decision:** `get_repo` resolves per-request: `DEV_AUTH_BYPASS=="1"` OR no `app.state.db_pool` → `MockRepo`; else `PgRepo`. Auth-bypass and store-choice are deliberately fused on one pilot flag.
+
+**Rationale:** Keeps the no-DB DEV click-through working (standing pilot pattern) without a second flag. Accepted limitation: no real-auth+mock-DB or bypass-auth+real-DB combination (spec §4).
+
+**Reversal cost:** Low — splitting into two env flags later is mechanical.
+
+---
+
+## Lock #23 — Per-year `id_counter` row over a sequence
+
+**Decision:** `rls_id` (`RLS-YY-NNNN`) is allocated from a per-year `id_counter` row via atomic `INSERT … ON CONFLICT (year) DO UPDATE … RETURNING` inside the genesis tx. Calendar year (UTC).
+
+**Rationale:** Contiguous, gap-free official legal numbering (a rolled-back genesis consumes no number); a Postgres SEQUENCE leaks numbers on rollback. Single-row-lock scaling limit (~≤1 submit/s) documented in spec §13 — acceptable at county intake volume.
+
+**Reversal cost:** Medium — moving to hi-lo/sequence allocation later changes the numbering guarantee; needs a documented transition.
