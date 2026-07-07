@@ -1,5 +1,7 @@
 # RLS Apex v1 — Claude Context
 
+> **DORMANT/dead per user (2026-06-29).** Do not resume work here without explicit user direction; sections below describe the state at pause.
+
 Pre-submission AI validator for Manatee County RLS. MCP-first procedural agent
 (LLM orchestrator + RLS-domain tools + boring official UI). County-governed,
 legal-liability surface — treat decisions as load-bearing.
